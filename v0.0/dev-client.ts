@@ -1,11 +1,12 @@
 import axios from "axios";
+import WebSocket from "ws";
 import { ethers } from "ethers";
 
 const SEISMIC_CONFIG = {
     ip: "44.201.111.37",
     port: "8000",
 };
-const SEISMIC_URL = `http://${SEISMIC_CONFIG.ip}:${SEISMIC_CONFIG.port}`;
+const SEISMIC_URL = `${SEISMIC_CONFIG.ip}:${SEISMIC_CONFIG.port}`;
 
 const SAMPLE_ORDER_DATA = {
     transparent: {
@@ -33,51 +34,97 @@ async function handleAsync<T>(
     }
 }
 
-(async () => {
-    console.log("===== Creating sample wallet");
+async function createWallet(): Promise<ethers.Wallet> {
     let privateKey = ethers.Wallet.createRandom().privateKey;
     let wallet = new ethers.Wallet(privateKey);
     let address = wallet.address;
-    console.log("- Address:", address);
-    console.log("=====");
+    console.log("- Sample wallet address:", address);
+    return wallet;
+}
 
-
-    console.log("===== Authenticating socket");
-    let result, error;
-    [result, error] = await handleAsync(axios.post(
-        `${SEISMIC_URL}/request_challenge`
-    ));
-    if (!result || error) {
-        console.error('- Error requesting challenge:', error);
+async function requestChallenge(wallet: ethers.Wallet): Promise<string> {
+    let res, err;
+    [res, err] = await handleAsync(
+        axios.post(`http://${SEISMIC_URL}/request_challenge`)
+    );
+    if (!res || err) {
+        console.error("- Error requesting challenge:", err);
         process.exit(1);
     }
-    const challenge = result.data;
+    const challenge = res.data;
     console.log("- Received challenge:", challenge);
+    return challenge;
+}
 
-    [result, error] = await handleAsync(wallet.signMessage(challenge));
-    if (!result || error) {
-        console.error('- Error signing challenge:', error);
+async function signChallenge(
+    wallet: ethers.Wallet,
+    challenge: string
+): Promise<string> {
+    let res, err;
+    [res, err] = await handleAsync(wallet.signMessage(challenge));
+    if (!res || err) {
+        console.error("- Error signing challenge:", err);
         process.exit(1);
     }
-    const signature = result;
+    const signature = res;
     console.log("- Signed challenge:", signature);
+    return signature;
+}
 
-    [result, error] = await handleAsync(axios.post(
-        `${SEISMIC_URL}/submit_response`
-    ));
+async function submitResponse(
+    wallet: ethers.Wallet,
+    challenge: string,
+    signature: string
+): Promise<string> {
+    let res, err;
+    [res, err] = await handleAsync(
+        axios.post(`http://${SEISMIC_URL}/submit_response`, {
+            challenge_id: challenge,
+            signature: signature,
+            pub_key: wallet.address,
+        })
+    );
+    if (!res || err) {
+        console.error("- Error sending in challenge & receiving JWT:", err);
+        process.exit(1);
+    }
+    const jwt = res.data;
+    console.log("- Received JWT:", jwt);
+    return jwt;
+}
 
-    // wallet.signMessage(challenge).then(signature => {
-    //     axios.post('http://localhost:8000/submit_response', {
-    //       challenge_id: challenge,
-    //       signature: signature,
-    //       pub_key: wallet.address
-    //     })
-    //     .then(response => {
-    //       fs.writeFileSync('jwt.txt', response.data);
-    //       console.log('JWT received and stored in jwt.txt');
-    //     })
-    //     .catch(error => console.error(error));
-    //   });
+async function setupWebSocket(jwt: string): Promise<WebSocket> {
+    const ws = new WebSocket(`ws://${SEISMIC_URL}/ws`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+    });
+    ws.on("open", () => {
+        ws.send(
+            JSON.stringify({
+                action: "clearorderbook",
+            }),
+            (err: Error | undefined) => {
+                if (err) {
+                    console.error("- Error clearing:", err);
+                }
+            }
+        );
+    });
+    ws.on("message", (data: string) => {
+        console.log("- Received message:", data.toString());
+    });
+    ws.on("error", (err: Error) => {
+        console.error("- WebSocket error:", err);
+    });
+    ws.on("close", () => {
+        console.log("- WebSocket connection closed");
+    });
+    return ws;
+}
 
-    console.log("=====");
+(async () => {
+    const wallet = await createWallet();
+    const challenge = await requestChallenge(wallet);
+    const signature = await signChallenge(wallet, challenge);
+    const jwt = await submitResponse(wallet, challenge, signature);
+    const ws = await setupWebSocket(jwt);
 })();
