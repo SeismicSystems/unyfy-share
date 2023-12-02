@@ -1,0 +1,4 @@
+[
+    { "price": 100, "volume": 1, "side": 1 },
+    { "price": 101.22, "volume": 5, "side": 0 }
+]

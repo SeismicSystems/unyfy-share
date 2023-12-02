@@ -4,7 +4,7 @@
   "description": "",
   "main": "dev-client.ts",
   "scripts": {
-    "dev": "ts-node dev-client.ts"
+    "dev": "ts-node client.ts"
   },
   "author": "",
   "license": "ISC",
