@@ -3,7 +3,7 @@ import fs from "fs";
 import WebSocket from "ws";
 import { ethers } from "ethers";
 import * as crypto from "crypto";
-import { Order, EnclaveSignature } from "./types";
+import { RawOrder, Order, EnclaveSignature } from "./types";
 
 const SEISMIC_CONFIG = {
     ip: "44.201.111.37",
@@ -12,21 +12,6 @@ const SEISMIC_CONFIG = {
 const SEISMIC_URL = `${SEISMIC_CONFIG.ip}:${SEISMIC_CONFIG.port}`;
 const ENCLAVE_PUBADDR = "0xa2c03BbE8Ce76d0c93D428A0f913F10b7acCfa9F";
 const SAMPLE_ORDERS_FILE = "sample-orders.json";
-
-const SAMPLE_ORDER_DATA = {
-    transparent: {
-        side: "1",
-        token: "92bf259f558808106e4840e2642352b156a31bc41e5b4283df2937278f0a7a65",
-        denomination: "0x1",
-    },
-    shielded: {
-        price: "99331421600",
-        volume: "3000000000",
-        accessKey: "1",
-    },
-};
-const SAMPLE_ORDER_HASH =
-    "1303177350543915549821791317173867930338436297750196254712378410446088378";
 
 async function handleAsync<T>(
     promise: Promise<T>
@@ -158,24 +143,23 @@ function clearBook(ws: WebSocket) {
     );
 }
 
-function constructOrderReq(order: Order): Object {
+function constructOrder(raw: RawOrder): Order {
     const accessKey = parseInt(crypto.randomBytes(5).toString("hex"), 16);
     const hash = crypto.createHash("sha256");
-    hash.update(order.price.toString());
-    hash.update(order.volume.toString());
+    hash.update(raw.price.toString());
+    hash.update(raw.volume.toString());
     hash.update(accessKey.toString());
 
     return {
-        action: "sendorder",
         data: {
             transparent: {
-                side: order.side.toString(),
+                side: raw.side.toString(),
                 token: "92bf259f558808106e4840e2642352b156a31bc41e5b4283df2937278f0a7a65",
                 denomination: "0x1",
             },
             shielded: {
-                price: (order.price * 10 ** 9).toString(),
-                volume: (order.volume * 10 ** 9).toString(),
+                price: (raw.price * 10 ** 9).toString(),
+                volume: (raw.volume * 10 ** 9).toString(),
                 accessKey: accessKey.toString(),
             },
         },
@@ -184,16 +168,23 @@ function constructOrderReq(order: Order): Object {
 }
 
 function submitOrders(ws: WebSocket) {
-    const orders: Order[] = JSON.parse(
+    const rawOrders: RawOrder[] = JSON.parse(
         fs.readFileSync(SAMPLE_ORDERS_FILE, "utf8")
     );
+    const orders: Order[] = rawOrders.map((raw) => constructOrder(raw));
     orders.forEach((order) => {
-        const orderReq = constructOrderReq(order);
-        ws.send(JSON.stringify(orderReq), (error) => {
-            if (error) {
-                console.error("- Error submitting order:", error);
+        ws.send(
+            JSON.stringify({
+                action: "sendorder",
+                data: order.data,
+                hash: order.hash,
+            }),
+            (error) => {
+                if (error) {
+                    console.error("- Error submitting order:", error);
+                }
             }
-        });
+        );
     });
 }
 
@@ -234,5 +225,6 @@ let ws: WebSocket;
     clearBook(ws);
     await sleep(1);
     submitOrders(ws);
+    await sleep(1);
     getOpenOrders(ws);
 })();
