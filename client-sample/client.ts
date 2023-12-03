@@ -3,6 +3,7 @@ import fs from "fs";
 import WebSocket from "ws";
 import { ethers } from "ethers";
 import * as crypto from "crypto";
+import { poseidon4 } from 'poseidon-lite';
 import { RawOrder, Order, EnclaveSignature } from "./types";
 
 const SEISMIC_CONFIG = {
@@ -12,6 +13,7 @@ const SEISMIC_CONFIG = {
 const SEISMIC_URL = `${SEISMIC_CONFIG.ip}:${SEISMIC_CONFIG.port}`;
 const ENCLAVE_PUBADDR = "0xa2c03BbE8Ce76d0c93D428A0f913F10b7acCfa9F";
 const SAMPLE_ORDERS_FILE = "sample-orders.json";
+const DEFAULT_TOKEN = '92bf259f558808106e4840e2642352b156a31bc41e5b4283df2937278f0a7a65';
 
 async function handleAsync<T>(
     promise: Promise<T>
@@ -145,16 +147,14 @@ function clearBook(ws: WebSocket) {
 
 function constructOrder(raw: RawOrder): Order {
     const accessKey = parseInt(crypto.randomBytes(5).toString("hex"), 16);
-    const hash = crypto.createHash("sha256");
-    hash.update(raw.price.toString());
-    hash.update(raw.volume.toString());
-    hash.update(accessKey.toString());
+    let hash = poseidon4([raw.price.toString(), raw.volume.toString(), raw.side.toString(), accessKey.toString()]);
+    console.log(hash.toString(16));
 
     return {
         data: {
             transparent: {
                 side: raw.side.toString(),
-                token: "92bf259f558808106e4840e2642352b156a31bc41e5b4283df2937278f0a7a65",
+                token: DEFAULT_TOKEN,
                 denomination: "0x1",
             },
             shielded: {
@@ -163,11 +163,12 @@ function constructOrder(raw: RawOrder): Order {
                 accessKey: accessKey.toString(),
             },
         },
-        hash: hash.digest("hex").slice(0, 30),
+        hash: "",
+        // hash: hash.digest("hex").slice(0, 30),
     };
 }
 
-function submitOrders(ws: WebSocket) {
+function submitOrders(ws: WebSocket): Order[] {
     const rawOrders: RawOrder[] = JSON.parse(
         fs.readFileSync(SAMPLE_ORDERS_FILE, "utf8")
     );
@@ -186,6 +187,7 @@ function submitOrders(ws: WebSocket) {
             }
         );
     });
+    return orders;
 }
 
 function sleep(seconds: number) {
@@ -205,26 +207,39 @@ function getOpenOrders(ws: WebSocket) {
     );
 }
 
-let ws: WebSocket;
+function getCrossedOrders(ws1: WebSocket, order: Order) {
+    console.log(JSON.stringify({
+        "action": "getcrossedorders",
+        "data": order.data,
+        "hash": order.hash
+    }));
+    ws1.send(JSON.stringify({
+        "action": "getcrossedorders",
+        "data": order.data,
+        "hash": order.hash
+    }), (error) => {
+        if (error) {
+            console.error('Error sending get crossed orders message:', error);
+        }
+    });
+}
+
 (async () => {
-    const wallet = await createWallet();
-    ws = await openAuthSocket(wallet);
+    const wallet1 = await createWallet();
+    const ws1 = await openAuthSocket(wallet1);
 
-    ws.on("close", () => {
-        console.log(`WebSocket closed.`);
-    });
+    // const wallet2 = await createWallet();
+    // const ws2 = await openAuthSocket(wallet2);
 
-    ws.on("error", (err) => {
-        console.error("WebSocket error:", err);
-    });
-
-    process.on("uncaughtException", (err) => {
-        console.error("Uncaught exception:", err);
-    });
-
-    clearBook(ws);
+    clearBook(ws1);
     await sleep(1);
-    submitOrders(ws);
+    const orders = submitOrders(ws1);
+    if (orders.length === 0) {
+        console.error("- Parsed 0 orders from file.");
+        process.exit(1);
+    }
     await sleep(1);
-    getOpenOrders(ws);
+    getOpenOrders(ws1);
+    await sleep(1);
+    getCrossedOrders(ws1, orders[2]);
 })();
