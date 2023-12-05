@@ -273,5 +273,5 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
     getOpenOrders(ws2);
     await sleep(1);
 
-    // getCrossedOrders(ws1, ordersW1[0]);
+    getCrossedOrders(ws1, ordersW1[0]);
 })();
