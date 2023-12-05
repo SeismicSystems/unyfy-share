@@ -3,7 +3,7 @@ import fs from "fs";
 import WebSocket from "ws";
 import { ethers } from "ethers";
 import * as crypto from "crypto";
-import { poseidon4 } from 'poseidon-lite';
+import { poseidon4 } from "poseidon-lite";
 import { RawOrder, Order, EnclaveSignature } from "./types";
 
 const SEISMIC_CONFIG = {
@@ -12,8 +12,13 @@ const SEISMIC_CONFIG = {
 };
 const SEISMIC_URL = `${SEISMIC_CONFIG.ip}:${SEISMIC_CONFIG.port}`;
 const ENCLAVE_PUBADDR = "0xa2c03BbE8Ce76d0c93D428A0f913F10b7acCfa9F";
-const SAMPLE_ORDERS_FILE = "sample-orders.json";
-const DEFAULT_TOKEN = '92bf259f558808106e4840e2642352b156a31bc41e5b4283df2937278f0a7a65';
+
+const W1_ORDERS = "wallet1_orders.json";
+const W2_ORDERS = "wallet2_orders.json";
+const DEFAULT_TOKEN =
+    "92bf259f558808106e4840e2642352b156a31bc41e5b4283df2937278f0a7a65";
+
+const BN128_SCALAR_MOD = BigInt(21888242871839275222246405745257275088548364400416034343698204186575808495617);
 
 async function handleAsync<T>(
     promise: Promise<T>
@@ -145,10 +150,24 @@ function clearBook(ws: WebSocket) {
     );
 }
 
+function uniformBN128Scalar(): BigInt {
+    let sample;
+    do {
+        sample = BigInt(`0x${crypto.randomBytes(32).toString("hex")}`);
+    } while (sample >= BN128_SCALAR_MOD);
+    return sample;
+}
+
 function constructOrder(raw: RawOrder): Order {
-    const accessKey = parseInt(crypto.randomBytes(5).toString("hex"), 16);
-    let hash = poseidon4([raw.price.toString(), raw.volume.toString(), raw.side.toString(), accessKey.toString()]);
-    console.log(hash.toString(16));
+    const accessKey = uniformBN128Scalar();
+    const scaledPrice = (raw.price * 10 ** 9);
+    const scaledVol = (raw.volume * 10 ** 9);
+    let orderHash = poseidon4([
+        scaledPrice.toString(),
+        scaledVol.toString(),
+        raw.side.toString(),
+        accessKey.toString(),
+    ]);
 
     return {
         data: {
@@ -158,19 +177,18 @@ function constructOrder(raw: RawOrder): Order {
                 denomination: "0x1",
             },
             shielded: {
-                price: (raw.price * 10 ** 9).toString(),
-                volume: (raw.volume * 10 ** 9).toString(),
-                accessKey: accessKey.toString(),
+                price: scaledPrice.toString(),
+                volume: scaledVol.toString(),
+                accessKey: accessKey.toString(16),
             },
         },
-        hash: "",
-        // hash: hash.digest("hex").slice(0, 30),
+        hash: orderHash.toString(16),
     };
 }
 
-function submitOrders(ws: WebSocket): Order[] {
+function submitOrders(ws: WebSocket, ordersFile: string): Order[] {
     const rawOrders: RawOrder[] = JSON.parse(
-        fs.readFileSync(SAMPLE_ORDERS_FILE, "utf8")
+        fs.readFileSync(ordersFile, "utf8")
     );
     const orders: Order[] = rawOrders.map((raw) => constructOrder(raw));
     orders.forEach((order) => {
@@ -208,38 +226,52 @@ function getOpenOrders(ws: WebSocket) {
 }
 
 function getCrossedOrders(ws1: WebSocket, order: Order) {
-    console.log(JSON.stringify({
-        "action": "getcrossedorders",
-        "data": order.data,
-        "hash": order.hash
-    }));
-    ws1.send(JSON.stringify({
-        "action": "getcrossedorders",
-        "data": order.data,
-        "hash": order.hash
-    }), (error) => {
-        if (error) {
-            console.error('Error sending get crossed orders message:', error);
+    console.log(
+        JSON.stringify({
+            action: "getcrossedorders",
+            data: order.data,
+            hash: order.hash,
+        })
+    );
+    ws1.send(
+        JSON.stringify({
+            action: "getcrossedorders",
+            data: order.data,
+            hash: order.hash,
+        }),
+        (error) => {
+            if (error) {
+                console.error(
+                    "Error sending get crossed orders message:",
+                    error
+                );
+            }
         }
-    });
+    );
 }
 
 (async () => {
     const wallet1 = await createWallet();
     const ws1 = await openAuthSocket(wallet1);
 
-    // const wallet2 = await createWallet();
-    // const ws2 = await openAuthSocket(wallet2);
+    const wallet2 = await createWallet();
+    const ws2 = await openAuthSocket(wallet2);
 
     clearBook(ws1);
     await sleep(1);
-    const orders = submitOrders(ws1);
-    if (orders.length === 0) {
-        console.error("- Parsed 0 orders from file.");
+
+    const ordersW1 = submitOrders(ws1, W1_ORDERS);
+    const ordersW2 = submitOrders(ws2, W2_ORDERS);
+    if (ordersW1.length === 0 || ordersW2.length === 0) {
+        console.error("- Wallet 1 (or wallet 2) order file couldn't be parsed");
         process.exit(1);
     }
     await sleep(1);
+
     getOpenOrders(ws1);
     await sleep(1);
-    getCrossedOrders(ws1, orders[2]);
+    getOpenOrders(ws2);
+    await sleep(1);
+
+    // getCrossedOrders(ws1, ordersW1[0]);
 })();
