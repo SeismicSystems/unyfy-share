@@ -97,6 +97,10 @@ function handleServerMsg(msg: string) {
         if (msgJson["action"] == "sendorder") {
             sanityCheckSignature(msgJson["enclaveSignature"]);
         }
+        if (msgJson["action"] == "getcrossedorders") {
+            console.log("GET CROSSED ORDERS", msgJson.toString() );
+            // fillOrder(msgJson["orderCommitment"], msgJson["data"]["orders"]);
+        }
     } catch {
         return;
     }
@@ -114,7 +118,7 @@ function sanityCheckSignature(encSig: EnclaveSignature) {
 }
 
 async function openAuthSocket(wallet: ethers.Wallet): Promise<WebSocket> {
-    const challenge = await requestChallenge(wallet);
+    const challenge = await requestChllenge(wallet);
     const signedChallenge = await signChallenge(wallet, challenge);
     const jwt = await submitResponse(wallet, challenge, signedChallenge);
 
@@ -226,13 +230,6 @@ function getOpenOrders(ws: WebSocket) {
 }
 
 function getCrossedOrders(ws1: WebSocket, order: Order) {
-    console.log(
-        JSON.stringify({
-            action: "getcrossedorders",
-            data: order.data,
-            hash: order.hash,
-        })
-    );
     ws1.send(
         JSON.stringify({
             action: "getcrossedorders",
@@ -263,7 +260,7 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
     const ordersW1 = submitOrders(ws1, W1_ORDERS);
     const ordersW2 = submitOrders(ws2, W2_ORDERS);
     if (ordersW1.length === 0 || ordersW2.length === 0) {
-        console.error("- Wallet 1 (or wallet 2) order file couldn't be parsed");
+        console.error("- Wallet 1 or 2 order file couldn't be parsed");
         process.exit(1);
     }
     await sleep(1);
