@@ -1,47 +1,53 @@
+/*
+ * A sample client for Unyfy that interfaces with Seismic's dev endpoint. Runs
+ * through submitting, crossing, and filling orders. Uses two separate wallets
+ * and sockets to emulate a trader and their counterparty.
+ */
 import axios from "axios";
 import fs from "fs";
 import WebSocket from "ws";
 import { ethers } from "ethers";
 import * as crypto from "crypto";
 import { poseidon4 } from "poseidon-lite";
+
+import * as Utils from "./utils";
 import { RawOrder, Order, EnclaveSignature } from "./types";
 
+/*
+ * Config for dev endpoint.
+ */
 const SEISMIC_CONFIG = {
     ip: "44.201.111.37",
     port: "8000",
+    encalvePubaddr: "0xa2c03BbE8Ce76d0c93D428A0f913F10b7acCfa9F",
 };
 const SEISMIC_URL = `${SEISMIC_CONFIG.ip}:${SEISMIC_CONFIG.port}`;
-const ENCLAVE_PUBADDR = "0xa2c03BbE8Ce76d0c93D428A0f913F10b7acCfa9F";
 
+/*
+ * Orders for wallet 1 (trader) and wallet 2 (counterparty). Orderbook currently
+ * set up for a single pair, ETH<>DEFAULT_TOKEN.
+ */
 const W1_ORDERS = "wallet1_orders.json";
 const W2_ORDERS = "wallet2_orders.json";
 const DEFAULT_TOKEN =
     "92bf259f558808106e4840e2642352b156a31bc41e5b4283df2937278f0a7a65";
 
-const BN128_SCALAR_MOD = BigInt(21888242871839275222246405745257275088548364400416034343698204186575808495617);
+/*
+ * Size of BN128's scalar field, where arithmetic is done in circuit. Used for
+ * sampling access keys.
+ */
+const BN128_SCALAR_MOD =
+    BigInt(
+        21888242871839275222246405745257275088548364400416034343698204186575808495617
+    );
 
-async function handleAsync<T>(
-    promise: Promise<T>
-): Promise<[T, null] | [null, any]> {
-    try {
-        const data = await promise;
-        return [data, null];
-    } catch (error) {
-        return [null, error];
-    }
-}
-
-async function createWallet(): Promise<ethers.Wallet> {
-    let privateKey = ethers.Wallet.createRandom().privateKey;
-    let wallet = new ethers.Wallet(privateKey);
-    let address = wallet.address;
-    console.log("- Sample wallet address:", address);
-    return wallet;
-}
-
+/*
+ * First step of authenticating a socket is requesting a challenge value from
+ * Seismic.
+ */
 async function requestChallenge(wallet: ethers.Wallet): Promise<string> {
     let res, err;
-    [res, err] = await handleAsync(
+    [res, err] = await Utils.handleAsync(
         axios.post(`http://${SEISMIC_URL}/request_challenge`)
     );
     if (!res || err) {
@@ -53,12 +59,16 @@ async function requestChallenge(wallet: ethers.Wallet): Promise<string> {
     return challenge;
 }
 
+/*
+ * A client must sign the returned challenge to prove to Seismic that they are
+ * the owner of a particular Ethereum address.
+ */
 async function signChallenge(
     wallet: ethers.Wallet,
     challenge: string
 ): Promise<string> {
     let res, err;
-    [res, err] = await handleAsync(wallet.signMessage(challenge));
+    [res, err] = await Utils.handleAsync(wallet.signMessage(challenge));
     if (!res || err) {
         console.error("- Error signing challenge:", err);
         process.exit(1);
@@ -68,13 +78,16 @@ async function signChallenge(
     return signature;
 }
 
-async function submitResponse(
+/*
+ * Sends the signed challenge value back to the server.
+ */
+async function sendChallenge(
     wallet: ethers.Wallet,
     challenge: string,
     signedChallenge: string
 ): Promise<string> {
     let res, err;
-    [res, err] = await handleAsync(
+    [res, err] = await Utils.handleAsync(
         axios.post(`http://${SEISMIC_URL}/submit_response`, {
             challenge_id: challenge,
             signature: signedChallenge,
@@ -82,7 +95,7 @@ async function submitResponse(
         })
     );
     if (!res || err) {
-        console.error("- Error sending in challenge & receiving JWT:", err);
+        console.error("- Error sending in challenge:", err);
         process.exit(1);
     }
     const jwt = res.data;
@@ -90,7 +103,62 @@ async function submitResponse(
     return jwt;
 }
 
-function handleServerMsg(msg: string) {
+/*
+ * Checks the signature that Seismic returns to acknowledge reception of an
+ * order. Ensures it verifies with the enclave's public key (address) so it will
+ * be accepted by the contract.
+ */
+function sanityCheckSignature(encSig: EnclaveSignature) {
+    const signature = `0x${encSig.signatureValue}`;
+    const shieldedCommit = encSig.orderCommitment.shielded;
+    const hashedCommit = ethers.hashMessage(shieldedCommit);
+    const recoveredAddr = ethers.recoverAddress(hashedCommit, signature);
+
+    if (
+        recoveredAddr.toLowerCase() !==
+        SEISMIC_CONFIG.encalvePubaddr.toLowerCase()
+    ) {
+        console.error("- CAUTION: Received invalid enclave signature");
+    }
+}
+
+/*
+ * Fill all orders that cross with the order sent in getcrossedorders.
+ */
+async function fillOrder(
+    ws: WebSocket,
+    orderCommit: any,
+    counterOrders: any[]
+) {
+    const ownHash = orderCommit["shielded"];
+    const ownSide = orderCommit["transparent"]["side"];
+    const counterHashes = counterOrders.map(
+        (counterOrder) => counterOrder["raw_order_commitment"]["private"]
+    );
+
+    ws.send(
+        JSON.stringify({
+            action: "fillorders",
+            data: {
+                side: ownSide,
+                hash_own: ownHash,
+                hash_matched: counterHashes,
+            },
+        }),
+        (error) => {
+            if (error) {
+                console.error("Error attempting to fill order:", error);
+            }
+        }
+    );
+}
+
+/*
+ * Consult API docs for the full list of messages Seismic will send to clients.
+ * This demo has special handling for 1) enclave signatures, and 2) crossed
+ * orders.
+ */
+function handleServerMsg(ws: WebSocket, msg: string) {
     console.log("- Received message:", msg.toString());
     try {
         const msgJson = JSON.parse(msg);
@@ -98,36 +166,31 @@ function handleServerMsg(msg: string) {
             sanityCheckSignature(msgJson["enclaveSignature"]);
         }
         if (msgJson["action"] == "getcrossedorders") {
-            console.log("GET CROSSED ORDERS", msgJson.toString() );
-            // fillOrder(msgJson["orderCommitment"], msgJson["data"]["orders"]);
+            fillOrder(
+                ws,
+                msgJson["orderCommitment"],
+                msgJson["data"]["orders"]
+            );
         }
     } catch {
         return;
     }
 }
 
-function sanityCheckSignature(encSig: EnclaveSignature) {
-    const signature = `0x${encSig.signatureValue}`;
-    const shieldedCommit = encSig.orderCommitment.shielded;
-    const hashedCommit = ethers.hashMessage(shieldedCommit);
-    const recoveredAddr = ethers.recoverAddress(hashedCommit, signature);
-
-    if (recoveredAddr.toLowerCase() !== ENCLAVE_PUBADDR.toLowerCase()) {
-        console.error("- CAUTION: Received invalid enclave signature");
-    }
-}
-
+/*
+ * Opens a socket with Seismic and authenticates it with wallet keypair. 
+ */
 async function openAuthSocket(wallet: ethers.Wallet): Promise<WebSocket> {
-    const challenge = await requestChllenge(wallet);
+    const challenge = await requestChallenge(wallet);
     const signedChallenge = await signChallenge(wallet, challenge);
-    const jwt = await submitResponse(wallet, challenge, signedChallenge);
+    const jwt = await sendChallenge(wallet, challenge, signedChallenge);
 
     return new Promise((resolve, _) => {
         const ws = new WebSocket(`ws://${SEISMIC_URL}/ws`, {
             headers: { Authorization: `Bearer ${jwt}` },
         });
         ws.on("message", (msg: string) => {
-            handleServerMsg(msg);
+            handleServerMsg(ws, msg);
         });
         ws.on("error", (err: Error) => {
             console.error("- WebSocket error:", err);
@@ -141,6 +204,9 @@ async function openAuthSocket(wallet: ethers.Wallet): Promise<WebSocket> {
     });
 }
 
+/*
+ * Reset the order book. For development only.
+ */
 function clearBook(ws: WebSocket) {
     ws.send(
         JSON.stringify({
@@ -154,6 +220,8 @@ function clearBook(ws: WebSocket) {
     );
 }
 
+/*
+ */
 function uniformBN128Scalar(): BigInt {
     let sample;
     do {
@@ -164,8 +232,8 @@ function uniformBN128Scalar(): BigInt {
 
 function constructOrder(raw: RawOrder): Order {
     const accessKey = uniformBN128Scalar();
-    const scaledPrice = (raw.price * 10 ** 9);
-    const scaledVol = (raw.volume * 10 ** 9);
+    const scaledPrice = raw.price * 10 ** 9;
+    const scaledVol = raw.volume * 10 ** 9;
     let orderHash = poseidon4([
         scaledPrice.toString(),
         scaledVol.toString(),
@@ -248,10 +316,10 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
 }
 
 (async () => {
-    const wallet1 = await createWallet();
+    const wallet1 = await Utils.createWallet();
     const ws1 = await openAuthSocket(wallet1);
 
-    const wallet2 = await createWallet();
+    const wallet2 = await Utils.createWallet();
     const ws2 = await openAuthSocket(wallet2);
 
     clearBook(ws1);
