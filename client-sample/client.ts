@@ -1,7 +1,12 @@
 /*
  * A sample client for Unyfy that interfaces with Seismic's dev endpoint. Runs
  * through submitting, crossing, and filling orders. Uses two separate wallets
- * and sockets to emulate a trader and their counterparty.
+ * and sockets to emulate a trader and their counterparty. 
+ * 
+ * We haven't turned on the light client yet for this version, so all claimed 
+ * moves submitted to Seismic are assumed to be instantly finalized on-chain.
+ * The next update will include a dev chain that we will host for Unyfy so 
+ * everyone can test the contract interaction as well.
  */
 import axios from "axios";
 import fs from "fs";
