@@ -25,12 +25,21 @@ export async function handleAsync<T>(
 /*
  * Spins up a fresh Ethereum wallet.
  */
-export async function createWallet(): Promise<ethers.Wallet> {
-    let privateKey = ethers.Wallet.createRandom().privateKey;
+export async function createWallet(wallet_num: number): Promise<ethers.Wallet> {
+    if(wallet_num == 1){
+    let privateKey = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
     let wallet = new ethers.Wallet(privateKey);
     let address = wallet.address;
     console.log("- Sample wallet address:", address);
     return wallet;
+    }
+    else{
+    let privateKey = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
+    let wallet = new ethers.Wallet(privateKey);
+    let address = wallet.address;
+    console.log("- Sample wallet address:", address);
+    return wallet;
+}
 }
 
 /*

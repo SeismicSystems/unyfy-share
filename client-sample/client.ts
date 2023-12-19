@@ -13,6 +13,8 @@ import fs from "fs";
 import WebSocket from "ws";
 import { ethers } from "ethers";
 import { poseidon4 } from "poseidon-lite";
+import { JsonRpcProvider } from "@ethersproject/providers";
+import { BigNumberish } from "ethers";
 
 import * as Utils from "./utils";
 import { RawOrder, Order } from "./types";
@@ -21,12 +23,17 @@ import { RawOrder, Order } from "./types";
  * Config for dev endpoint.
  */
 const SEISMIC_CONFIG = {
-    ip: "44.201.111.37",
+    ip: "127.0.0.1",
     port: "8000",
     encalvePubaddr: "0xa2c03BbE8Ce76d0c93D428A0f913F10b7acCfa9F",
 };
 const SEISMIC_URL = `${SEISMIC_CONFIG.ip}:${SEISMIC_CONFIG.port}`;
+const contractAddress = "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512";
+const provider= new ethers.JsonRpcProvider("http://localhost:8545");
+const contractABI = 
+    [{"type":"function","name":"cancel","inputs":[{"name":"_orderhash","type":"uint256","internalType":"uint256"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"deleteOrderFromTree","inputs":[{"name":"_orderhash","type":"uint256","internalType":"uint256"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"fill","inputs":[{"name":"_orderhash","type":"uint256","internalType":"uint256"},{"name":"_filledorderhashes","type":"uint256[]","internalType":"uint256[]"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"place","inputs":[{"name":"_orderhash","type":"uint256","internalType":"uint256"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"event","name":"orderCancelled","inputs":[{"name":"pubaddr","type":"address","indexed":true,"internalType":"address"},{"name":"orderhash","type":"uint256","indexed":true,"internalType":"uint256"}],"anonymous":false},{"type":"event","name":"orderDelete","inputs":[{"name":"orderhash","type":"uint256","indexed":true,"internalType":"uint256"}],"anonymous":false},{"type":"event","name":"orderFilled","inputs":[{"name":"pubaddr","type":"address","indexed":true,"internalType":"address"},{"name":"orderhash","type":"uint256","indexed":true,"internalType":"uint256"},{"name":"filledorderhashes","type":"uint256[]","indexed":true,"internalType":"uint256[]"}],"anonymous":false},{"type":"event","name":"orderPlaced","inputs":[{"name":"pubaddr","type":"address","indexed":true,"internalType":"address"},{"name":"orderhash","type":"uint256","indexed":true,"internalType":"uint256"}],"anonymous":false}];
 
+    const contract = new ethers.Contract(contractAddress, contractABI, provider);    
 /*
  * Orders for wallet 1 (trader) and wallet 2 (counterparty). Orderbook currently
  * set up for a single pair, ETH<>DEFAULT_TOKEN.
@@ -218,7 +225,7 @@ function constructOrder(raw: RawOrder): Order {
 /*
  * Submit orders to book.
  */
-function submitOrders(ws: WebSocket, ordersFile: string): Order[] {
+function submitOrders(ws: WebSocket, ordersFile: string, privkey: string): Order[] {
     const rawOrders: RawOrder[] = JSON.parse(
         fs.readFileSync(ordersFile, "utf8")
     );
@@ -236,6 +243,18 @@ function submitOrders(ws: WebSocket, ordersFile: string): Order[] {
                 }
             }
         );
+        const signer = new ethers.Wallet(privkey, provider);
+        const decimalOrderHash = BigInt(parseInt(order.hash, 16)).toString();
+        let maxFeePerGas = ethers.toBigInt(ethers.parseUnits('1000', 'gwei')); // Set to 1000 gwei
+        let maxPriorityFeePerGas = ethers.toBigInt(ethers.parseUnits('1000', 'gwei')); // Set to 1000 gwei
+
+const tx = signer.sendTransaction({
+    to: contractAddress,
+    data: contract.interface.encodeFunctionData("place", [decimalOrderHash]),
+    gasPrice: 3614626451,
+    gasLimit: 30000000, 
+});
+        console.log(tx);
     });
     return orders;
 }
@@ -261,6 +280,41 @@ function getOpenOrders(ws: WebSocket) {
  * Ask Seismic's matching engine to look up all orders that cross with an
  * input order.
  */
+
+function upgradeListeningContract(ws: WebSocket) {
+    ws.on('open', function open() {
+        console.log('Connected to the server!');
+
+        const upgradeRequestJson = {
+            "action": "upgradelisteningcontract",
+            "data": {
+                "newAddress": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512"
+            }
+        };
+
+        console.log(upgradeRequestJson);
+
+        ws.send(JSON.stringify(upgradeRequestJson), (error) => {
+            if (error) {
+                console.error('Error sending message:', error);
+            }
+        });
+    });
+
+    ws.on('message', function message(data) {
+        console.log('Received message:', data.toString());
+    });
+
+    ws.on('error', function error(err) {
+        console.error('WebSocket error:', err);
+    });
+
+    ws.on('close', function close() {
+        console.log('WebSocket connection closed');
+    });
+}
+
+
 function getCrossedOrders(ws1: WebSocket, order: Order) {
     ws1.send(
         JSON.stringify({
@@ -281,19 +335,26 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
 
 (async () => {
     // Need at least two wallets to emulate a typical Unyfy interaction.
-    const wallet1 = await Utils.createWallet();
+    const wallet1 = await Utils.createWallet(1);
     const ws1 = await openAuthSocket(wallet1);
+    const privkey1 = wallet1.privateKey;
 
-    const wallet2 = await Utils.createWallet();
+    const wallet2 = await Utils.createWallet(2);
     const ws2 = await openAuthSocket(wallet2);
+    const privkey2 = wallet2.privateKey;
+
+
+
+    //upgrade the listening contract
+    upgradeListeningContract(ws1);
 
     // Reset the order book so we have a blank slate.
     clearBook(ws1);
     await Utils.sleep(1);
 
     // We provide a sample set of orders for each wallet that includes crosses.
-    const ordersW1 = submitOrders(ws1, W1_ORDERS);
-    const ordersW2 = submitOrders(ws2, W2_ORDERS);
+    const ordersW1 = submitOrders(ws1, W1_ORDERS, privkey1);
+    const ordersW2 = submitOrders(ws2, W2_ORDERS, privkey2);
     if (ordersW1.length === 0 || ordersW2.length === 0) {
         console.error("- Wallet 1 or 2 order file couldn't be parsed");
         process.exit(1);
