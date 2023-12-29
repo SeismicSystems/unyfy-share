@@ -30,12 +30,11 @@ import { parseGwei } from "viem";
  * Config for dev endpoint.
  */
 const SEISMIC_CONFIG = {
-    ip: "127.0.0.1",
+    ip: "44.201.111.37",
     port: "8000",
     encalvePubaddr: "0xa2c03BbE8Ce76d0c93D428A0f913F10b7acCfa9F",
 };
 const SEISMIC_URL = `${SEISMIC_CONFIG.ip}:${SEISMIC_CONFIG.port}`;
-const contractAddress = "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512";
 /*
  * Orders for wallet 1 (trader) and wallet 2 (counterparty). Orderbook currently
  * set up for a single pair, ETH<>DEFAULT_TOKEN.
