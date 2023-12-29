@@ -299,7 +299,7 @@ async function sendCancelProof(
         const { request } = await publicClient.simulateContract({
             address: `0x${MAIN_CONTRACT}`,
             abi: UnyfyDevABI.abi,
-            functionName: "verifyPlaceProof",
+            functionName: "verifyCancelProof",
             args: [
                 CANCEL_CONTRACT,
                 cancelProof.a,
@@ -334,7 +334,7 @@ async function sendFillProof(
     const { request } = await publicClient.simulateContract({
         address: `0x${MAIN_CONTRACT}`,
         abi: UnyfyDevABI.abi,
-        functionName: "verifyPlaceProof",
+        functionName: "verifyFillProof",
         args: [
             FILL_CONTRACT,
             fillProof.a,
