@@ -1,11 +1,11 @@
 /*
  * A sample client for Unyfy that interfaces with Seismic's dev endpoint. Runs
  * through submitting, crossing, and filling orders. Uses two separate wallets
- * and sockets to emulate a trader and their counterparty. 
- * 
- * We haven't turned on the light client yet for this version, so all claimed 
+ * and sockets to emulate a trader and their counterparty.
+ *
+ * We haven't turned on the light client yet for this version, so all claimed
  * moves submitted to Seismic are assumed to be instantly finalized on-chain.
- * The next update will include a dev chain that we will host for Unyfy so 
+ * The next update will include a dev chain that we will host for Unyfy so
  * everyone can test the contract interaction as well.
  */
 import axios from "axios";
@@ -15,9 +15,21 @@ import { ethers } from "ethers";
 import { poseidon4 } from "poseidon-lite";
 import { JsonRpcProvider } from "@ethersproject/providers";
 import { BigNumberish } from "ethers";
-
+import { SEPOLIA_RPC } from "./constants";
+import { sepolia } from "viem/chains";
+import {
+    getContract,
+    PrivateKeyAccount,
+    PublicClient,
+    WalletClient,
+} from "viem";
+import UnyfyDevABI from "./artifacts/UnyfyDev.json" assert { type: "json" };
 import * as Utils from "./utils";
 import { RawOrder, Order } from "./types";
+import { createPublicClient, http, createWalletClient } from "viem";
+import { mainnet } from "viem/chains";
+import { W1_PRIV_KEY, W2_PRIV_KEY } from "./constants";
+import { privatekeySetup } from "./utils";
 
 /*
  * Config for dev endpoint.
@@ -29,11 +41,6 @@ const SEISMIC_CONFIG = {
 };
 const SEISMIC_URL = `${SEISMIC_CONFIG.ip}:${SEISMIC_CONFIG.port}`;
 const contractAddress = "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512";
-const provider= new ethers.JsonRpcProvider("http://localhost:8545");
-const contractABI = 
-    [{"type":"function","name":"cancel","inputs":[{"name":"_orderhash","type":"uint256","internalType":"uint256"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"deleteOrderFromTree","inputs":[{"name":"_orderhash","type":"uint256","internalType":"uint256"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"fill","inputs":[{"name":"_orderhash","type":"uint256","internalType":"uint256"},{"name":"_filledorderhashes","type":"uint256[]","internalType":"uint256[]"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"place","inputs":[{"name":"_orderhash","type":"uint256","internalType":"uint256"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"event","name":"orderCancelled","inputs":[{"name":"pubaddr","type":"address","indexed":true,"internalType":"address"},{"name":"orderhash","type":"uint256","indexed":true,"internalType":"uint256"}],"anonymous":false},{"type":"event","name":"orderDelete","inputs":[{"name":"orderhash","type":"uint256","indexed":true,"internalType":"uint256"}],"anonymous":false},{"type":"event","name":"orderFilled","inputs":[{"name":"pubaddr","type":"address","indexed":true,"internalType":"address"},{"name":"orderhash","type":"uint256","indexed":true,"internalType":"uint256"},{"name":"filledorderhashes","type":"uint256[]","indexed":true,"internalType":"uint256[]"}],"anonymous":false},{"type":"event","name":"orderPlaced","inputs":[{"name":"pubaddr","type":"address","indexed":true,"internalType":"address"},{"name":"orderhash","type":"uint256","indexed":true,"internalType":"uint256"}],"anonymous":false}];
-
-    const contract = new ethers.Contract(contractAddress, contractABI, provider);    
 /*
  * Orders for wallet 1 (trader) and wallet 2 (counterparty). Orderbook currently
  * set up for a single pair, ETH<>DEFAULT_TOKEN.
@@ -49,10 +56,10 @@ const ETH_DENOMINATION = "0x1";
  * Seismic. Must sign the returned challenge to prove to Seismic that they are
  * the owner of a particular Ethereum address.
  */
-async function requestChallenge(wallet: ethers.Wallet): Promise<string> {
+async function requestChallenge(wallet: WalletClient): Promise<string> {
     let res, err;
     [res, err] = await Utils.handleAsync(
-        axios.post(`http://${SEISMIC_URL}/request_challenge`)
+        axios.post(`http://${SEISMIC_URL}/request_challenge`),
     );
     if (!res || err) {
         console.error("- Error requesting challenge:", err);
@@ -67,17 +74,17 @@ async function requestChallenge(wallet: ethers.Wallet): Promise<string> {
  * Send the signed challenge value back to the server.
  */
 async function sendChallenge(
-    wallet: ethers.Wallet,
+    account: PrivateKeyAccount,
     challenge: string,
-    signedChallenge: string
+    signedChallenge: string,
 ): Promise<string> {
     let res, err;
     [res, err] = await Utils.handleAsync(
         axios.post(`http://${SEISMIC_URL}/submit_response`, {
             challenge_id: challenge,
             signature: signedChallenge,
-            pub_key: wallet.address,
-        })
+            pub_key: account.address,
+        }),
     );
     if (!res || err) {
         console.error("- Error sending in challenge:", err);
@@ -95,12 +102,12 @@ async function sendChallenge(
 async function fillOrder(
     ws: WebSocket,
     orderCommit: any,
-    counterOrders: any[]
+    counterOrders: any[],
 ) {
     const ownHash = orderCommit["shielded"];
     const ownSide = orderCommit["transparent"]["side"];
     const counterHashes = counterOrders.map(
-        (counterOrder) => counterOrder["raw_order_commitment"]["private"]
+        (counterOrder) => counterOrder["raw_order_commitment"]["private"],
     );
 
     ws.send(
@@ -116,7 +123,7 @@ async function fillOrder(
             if (error) {
                 console.error("Error attempting to fill order:", error);
             }
-        }
+        },
     );
 }
 
@@ -132,14 +139,14 @@ function handleServerMsg(ws: WebSocket, msg: string) {
         if (msgJson["action"] == "sendorder") {
             Utils.sanityCheckSignature(
                 msgJson["enclaveSignature"],
-                SEISMIC_CONFIG.encalvePubaddr
+                SEISMIC_CONFIG.encalvePubaddr,
             );
         }
         if (msgJson["action"] == "getcrossedorders") {
             fillOrder(
                 ws,
                 msgJson["orderCommitment"],
-                msgJson["data"]["orders"]
+                msgJson["data"]["orders"],
             );
         }
     } catch {
@@ -150,10 +157,14 @@ function handleServerMsg(ws: WebSocket, msg: string) {
 /*
  * Open a socket with Seismic and authenticates it with wallet keypair.
  */
-async function openAuthSocket(wallet: ethers.Wallet): Promise<WebSocket> {
+async function openAuthSocket(
+    wallet: WalletClient,
+    account: PrivateKeyAccount,
+): Promise<WebSocket> {
     const challenge = await requestChallenge(wallet);
-    const signedChallenge = await Utils.signMsg(wallet, challenge);
-    const jwt = await sendChallenge(wallet, challenge, signedChallenge);
+
+    const signedChallenge = await Utils.signMsg(wallet, account, challenge);
+    const jwt = await sendChallenge(account, challenge, signedChallenge);
 
     return new Promise((resolve, _) => {
         const ws = new WebSocket(`ws://${SEISMIC_URL}/ws`, {
@@ -186,7 +197,7 @@ function clearBook(ws: WebSocket) {
             if (err) {
                 console.error("- Error clearing book:", err);
             }
-        }
+        },
     );
 }
 
@@ -225,9 +236,9 @@ function constructOrder(raw: RawOrder): Order {
 /*
  * Submit orders to book.
  */
-function submitOrders(ws: WebSocket, ordersFile: string, privkey: string): Order[] {
+function submitOrders(ws: WebSocket, ordersFile: string): Order[] {
     const rawOrders: RawOrder[] = JSON.parse(
-        fs.readFileSync(ordersFile, "utf8")
+        fs.readFileSync(ordersFile, "utf8"),
     );
     const orders: Order[] = rawOrders.map((raw) => constructOrder(raw));
     orders.forEach((order) => {
@@ -241,21 +252,40 @@ function submitOrders(ws: WebSocket, ordersFile: string, privkey: string): Order
                 if (error) {
                     console.error("- Error submitting order:", error);
                 }
-            }
+            },
         );
-        const signer = new ethers.Wallet(privkey, provider);
-        const decimalOrderHash = BigInt(parseInt(order.hash, 16)).toString();
-        let maxFeePerGas = ethers.toBigInt(ethers.parseUnits('1000', 'gwei')); // Set to 1000 gwei
-        let maxPriorityFeePerGas = ethers.toBigInt(ethers.parseUnits('1000', 'gwei')); // Set to 1000 gwei
-
-const tx = signer.sendTransaction({
-    to: contractAddress,
-    data: contract.interface.encodeFunctionData("place", [decimalOrderHash]),
-    gasPrice: 3614626451,
-    gasLimit: 30000000, 
-});
-        console.log(tx);
     });
+    return orders;
+}
+
+async function sendPlaceProof(
+    publicClient: PublicClient,
+    walletClient: WalletClient,
+    account: PrivateKeyAccount,
+    ordersFile: string,
+): Promise<Order[]> {
+    const rawOrders: RawOrder[] = JSON.parse(
+        fs.readFileSync(ordersFile, "utf8"),
+    );
+    const orders: Order[] = rawOrders.map((raw) => constructOrder(raw));
+    for (const order of orders) {
+        const placeProof = await Utils.provePlace(order.hash, "1");
+        const { request } = await publicClient.simulateContract({
+            address: "0xFBA3912Ca04dd458c843e2EE08967fC04f3579c2",
+            abi: UnyfyDevABI.abi,
+            functionName: "verifyPlaceProof",
+            args: [
+                [BigInt(placeProof.a[0]), BigInt(placeProof.a[1])],
+                [
+                    [BigInt(placeProof.b[0][0]), BigInt(placeProof.b[0][1])],
+                    [BigInt(placeProof.b[1][0]), BigInt(placeProof.b[1][1])],
+                ],
+                [BigInt(placeProof.c[0]), BigInt(placeProof.c[1])],
+                [BigInt(placeProof.input[0]), BigInt(placeProof.input[1])],
+            ],
+        });
+        await walletClient.writeContract(request);
+    }
     return orders;
 }
 
@@ -272,7 +302,7 @@ function getOpenOrders(ws: WebSocket) {
             if (error) {
                 console.error("- Error getting open orders:", error);
             }
-        }
+        },
     );
 }
 
@@ -282,38 +312,37 @@ function getOpenOrders(ws: WebSocket) {
  */
 
 function upgradeListeningContract(ws: WebSocket) {
-    ws.on('open', function open() {
-        console.log('Connected to the server!');
+    ws.on("open", function open() {
+        console.log("Connected to the server!");
 
         const upgradeRequestJson = {
-            "action": "upgradelisteningcontract",
-            "data": {
-                "newAddress": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512"
-            }
+            action: "upgradelisteningcontract",
+            data: {
+                newAddress: "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+            },
         };
 
         console.log(upgradeRequestJson);
 
         ws.send(JSON.stringify(upgradeRequestJson), (error) => {
             if (error) {
-                console.error('Error sending message:', error);
+                console.error("Error sending message:", error);
             }
         });
     });
 
-    ws.on('message', function message(data) {
-        console.log('Received message:', data.toString());
+    ws.on("message", function message(data) {
+        console.log("Received message:", data.toString());
     });
 
-    ws.on('error', function error(err) {
-        console.error('WebSocket error:', err);
+    ws.on("error", function error(err) {
+        console.error("WebSocket error:", err);
     });
 
-    ws.on('close', function close() {
-        console.log('WebSocket connection closed');
+    ws.on("close", function close() {
+        console.log("WebSocket connection closed");
     });
 }
-
 
 function getCrossedOrders(ws1: WebSocket, order: Order) {
     ws1.send(
@@ -326,47 +355,76 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
             if (error) {
                 console.error(
                     "Error sending get crossed orders message:",
-                    error
+                    error,
                 );
             }
-        }
+        },
     );
 }
 
 (async () => {
+    // Initialize a public client for Sepolia
+    const publicClient = createPublicClient({
+        chain: sepolia,
+        transport: http(SEPOLIA_RPC),
+    });
+
+    // Create contract instance
+    const contract = getContract({
+        address: "0xFBA3912Ca04dd458c843e2EE08967fC04f3579c2",
+        abi: UnyfyDevABI.abi,
+        publicClient,
+    });
+
+    const walletClient = createWalletClient({
+        chain: sepolia,
+        transport: http(SEPOLIA_RPC),
+    });
+
     // Need at least two wallets to emulate a typical Unyfy interaction.
-    const wallet1 = await Utils.createWallet(1);
-    const ws1 = await openAuthSocket(wallet1);
-    const privkey1 = wallet1.privateKey;
 
-    const wallet2 = await Utils.createWallet(2);
-    const ws2 = await openAuthSocket(wallet2);
-    const privkey2 = wallet2.privateKey;
-
-
-
-    //upgrade the listening contract
-    upgradeListeningContract(ws1);
+    const [wallet1, w1client] = privatekeySetup(W1_PRIV_KEY);
+    const ws1 = await openAuthSocket(w1client, wallet1);
+    const [wallet2, w2client] = privatekeySetup(W2_PRIV_KEY);
+    const ws2 = await openAuthSocket(w2client, wallet2);
 
     // Reset the order book so we have a blank slate.
     clearBook(ws1);
     await Utils.sleep(1);
 
-    // We provide a sample set of orders for each wallet that includes crosses.
-    const ordersW1 = submitOrders(ws1, W1_ORDERS, privkey1);
-    const ordersW2 = submitOrders(ws2, W2_ORDERS, privkey2);
+    // Send the orders to the book, at which point they are still in the staging queue
+    const ordersW1 = submitOrders(ws1, W1_ORDERS);
+    const ordersW2 = submitOrders(ws2, W2_ORDERS);
     if (ordersW1.length === 0 || ordersW2.length === 0) {
         console.error("- Wallet 1 or 2 order file couldn't be parsed");
         process.exit(1);
     }
     await Utils.sleep(1);
 
+    const placeProofsW1 = await sendPlaceProof(
+        publicClient,
+        w1client,
+        wallet1,
+        W1_ORDERS,
+    );
+    const placeProofsW2 = await sendPlaceProof(
+        publicClient,
+        w2client,
+        wallet2,
+        W2_ORDERS,
+    );
+
+    if (ordersW1.length === 0 || ordersW2.length === 0) {
+        console.error("- Wallet 1 or 2 order file couldn't be parsed");
+        process.exit(1);
+    }
+    await Utils.sleep(5);
     // Confirm that these orders were logged in the book.
     getOpenOrders(ws1);
     await Utils.sleep(1);
     getOpenOrders(ws2);
     await Utils.sleep(1);
 
-    // Gets crossed orders and automatically fills upon response.
+    // Gets crossed orders.
     getCrossedOrders(ws1, ordersW1[0]);
 })();

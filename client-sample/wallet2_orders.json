@@ -1,4 +1,4 @@
 [
-    { "price": 100.00, "volume": 1, "side": 1 },
-    { "price": 103.50, "volume": 2, "side": 1 }
+    { "price": 100.0, "volume": 1, "side": 1 },
+    { "price": 103.5, "volume": 2, "side": 1 }
 ]
