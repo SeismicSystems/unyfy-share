@@ -11,25 +11,20 @@
 import axios from "axios";
 import fs from "fs";
 import WebSocket from "ws";
-import { ethers } from "ethers";
 import { poseidon4 } from "poseidon-lite";
-import { JsonRpcProvider } from "@ethersproject/providers";
-import { BigNumberish } from "ethers";
-import { SEPOLIA_RPC } from "./constants";
-import { sepolia } from "viem/chains";
+import { PLACE_CONTRACT, FILL_CONTRACT, CANCEL_CONTRACT,MAIN_CONTRACT, SEPOLIA_RPC } from "./constants";
 import {
     getContract,
     PrivateKeyAccount,
     PublicClient,
     WalletClient,
 } from "viem";
-import UnyfyDevABI from "./artifacts/UnyfyDev.json" assert { type: "json" };
+import UnyfyDevABI from "./artifacts/UnyfyDev.json";
 import * as Utils from "./utils";
 import { RawOrder, Order } from "./types";
-import { createPublicClient, http, createWalletClient } from "viem";
-import { mainnet } from "viem/chains";
-import { W1_PRIV_KEY, W2_PRIV_KEY } from "./constants";
+import { W1_PRIV_KEY, W2_PRIV_KEY, publicClient} from "./constants";
 import { privatekeySetup } from "./utils";
+import { parseGwei } from "viem";
 
 /*
  * Config for dev endpoint.
@@ -132,22 +127,23 @@ async function fillOrder(
  * This demo has special handling for 1) enclave signatures, and 2) crossed
  * orders.
  */
-function handleServerMsg(ws: WebSocket, msg: string) {
+async function handleServerMsg(ws: WebSocket, msg: string, wallet: WalletClient, account: PrivateKeyAccount, publicClient: PublicClient) {
     console.log("- Received message:", msg.toString());
     try {
         const msgJson = JSON.parse(msg);
         if (msgJson["action"] == "sendorder") {
-            Utils.sanityCheckSignature(
+            await Utils.sanityCheckSignature(
                 msgJson["enclaveSignature"],
                 SEISMIC_CONFIG.encalvePubaddr,
             );
         }
         if (msgJson["action"] == "getcrossedorders") {
-            fillOrder(
-                ws,
-                msgJson["orderCommitment"],
-                msgJson["data"]["orders"],
-            );
+            let orderhashes =[];
+            orderhashes.push(msgJson["orderCommitment"]["shielded"]);
+            msgJson["data"]["orders"].forEach((order:any) => {
+                orderhashes.push(order["raw_order_commitment"]["private"]);
+            });
+            sendFillProof(publicClient, wallet, account, orderhashes);
         }
     } catch {
         return;
@@ -160,6 +156,7 @@ function handleServerMsg(ws: WebSocket, msg: string) {
 async function openAuthSocket(
     wallet: WalletClient,
     account: PrivateKeyAccount,
+    publicClient: PublicClient,
 ): Promise<WebSocket> {
     const challenge = await requestChallenge(wallet);
 
@@ -171,7 +168,7 @@ async function openAuthSocket(
             headers: { Authorization: `Bearer ${jwt}` },
         });
         ws.on("message", (msg: string) => {
-            handleServerMsg(ws, msg);
+            handleServerMsg(ws, msg, wallet, account, publicClient);
         });
         ws.on("error", (err: Error) => {
             console.error("- WebSocket error:", err);
@@ -257,7 +254,9 @@ function submitOrders(ws: WebSocket, ordersFile: string): Order[] {
     });
     return orders;
 }
-
+/*
+ * Sends the place proof to the contract for verification
+ */
 async function sendPlaceProof(
     publicClient: PublicClient,
     walletClient: WalletClient,
@@ -271,23 +270,85 @@ async function sendPlaceProof(
     for (const order of orders) {
         const placeProof = await Utils.provePlace(order.hash, "1");
         const { request } = await publicClient.simulateContract({
-            address: "0xFBA3912Ca04dd458c843e2EE08967fC04f3579c2",
+            address: `0x${MAIN_CONTRACT}`,
             abi: UnyfyDevABI.abi,
             functionName: "verifyPlaceProof",
             args: [
-                [BigInt(placeProof.a[0]), BigInt(placeProof.a[1])],
-                [
-                    [BigInt(placeProof.b[0][0]), BigInt(placeProof.b[0][1])],
-                    [BigInt(placeProof.b[1][0]), BigInt(placeProof.b[1][1])],
-                ],
-                [BigInt(placeProof.c[0]), BigInt(placeProof.c[1])],
-                [BigInt(placeProof.input[0]), BigInt(placeProof.input[1])],
+                PLACE_CONTRACT,
+                placeProof.a,
+                placeProof.b,
+                placeProof.c,
+                placeProof.input,
             ],
+            gasPrice: parseGwei('60')
         });
-        await walletClient.writeContract(request);
+        await walletClient.writeContract({ ...request, account: account });
     }
     return orders;
 }
+
+/*
+ * Sends the cancel proof to the contract for verification
+ */
+async function sendCancelProof(
+    publicClient: PublicClient,
+    walletClient: WalletClient,
+    account: PrivateKeyAccount,
+    orderhash: string,
+): Promise<string> {
+        const cancelProof = await Utils.proveCancel(orderhash, "1");
+        const { request } = await publicClient.simulateContract({
+            address: `0x${MAIN_CONTRACT}`,
+            abi: UnyfyDevABI.abi,
+            functionName: "verifyPlaceProof",
+            args: [
+                CANCEL_CONTRACT,
+                cancelProof.a,
+                cancelProof.b,
+                cancelProof.c,
+                cancelProof.input,
+            ],
+            gasPrice: parseGwei('60')
+        });
+        await walletClient.writeContract({ ...request, account: account });
+        return orderhash;
+    }
+
+/*
+ * Sends the fill proof to the contract for verification
+ */
+async function sendFillProof(
+    publicClient: PublicClient,
+    walletClient: WalletClient,
+    account: PrivateKeyAccount,
+    orderhashes: string[],
+): Promise<string[]> {
+    const fillProofs = [];
+    for (let i = 0; i < Math.min(orderhashes.length, 11); i++) {
+        fillProofs.push(orderhashes[i]);
+    }
+    while (fillProofs.length < 11) {
+        fillProofs.push("0");
+    }
+    fillProofs.push("1");
+    const fillProof = await Utils.proveFill(fillProofs, "1");
+    const { request } = await publicClient.simulateContract({
+        address: `0x${MAIN_CONTRACT}`,
+        abi: UnyfyDevABI.abi,
+        functionName: "verifyPlaceProof",
+        args: [
+            FILL_CONTRACT,
+            fillProof.a,
+            fillProof.b,
+            fillProof.c,
+            fillProof.input,
+        ],
+        gasPrice: parseGwei('60')
+    });
+    await walletClient.writeContract({ ...request, account: account });
+    return orderhashes;
+}
+
 
 /*
  * Ask Seismic for the pre-images of all open orders associated with the wallet
@@ -310,40 +371,6 @@ function getOpenOrders(ws: WebSocket) {
  * Ask Seismic's matching engine to look up all orders that cross with an
  * input order.
  */
-
-function upgradeListeningContract(ws: WebSocket) {
-    ws.on("open", function open() {
-        console.log("Connected to the server!");
-
-        const upgradeRequestJson = {
-            action: "upgradelisteningcontract",
-            data: {
-                newAddress: "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
-            },
-        };
-
-        console.log(upgradeRequestJson);
-
-        ws.send(JSON.stringify(upgradeRequestJson), (error) => {
-            if (error) {
-                console.error("Error sending message:", error);
-            }
-        });
-    });
-
-    ws.on("message", function message(data) {
-        console.log("Received message:", data.toString());
-    });
-
-    ws.on("error", function error(err) {
-        console.error("WebSocket error:", err);
-    });
-
-    ws.on("close", function close() {
-        console.log("WebSocket connection closed");
-    });
-}
-
 function getCrossedOrders(ws1: WebSocket, order: Order) {
     ws1.send(
         JSON.stringify({
@@ -364,29 +391,21 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
 
 (async () => {
     // Initialize a public client for Sepolia
-    const publicClient = createPublicClient({
-        chain: sepolia,
-        transport: http(SEPOLIA_RPC),
-    });
+    
 
     // Create contract instance
     const contract = getContract({
-        address: "0xFBA3912Ca04dd458c843e2EE08967fC04f3579c2",
+        address: '0x3C3EF8652c104f57acd42D077F060cf00cFc53B5',
         abi: UnyfyDevABI.abi,
-        publicClient,
-    });
-
-    const walletClient = createWalletClient({
-        chain: sepolia,
-        transport: http(SEPOLIA_RPC),
+        publicClient: publicClient,
     });
 
     // Need at least two wallets to emulate a typical Unyfy interaction.
 
     const [wallet1, w1client] = privatekeySetup(W1_PRIV_KEY);
-    const ws1 = await openAuthSocket(w1client, wallet1);
+    const ws1 = await openAuthSocket(w1client, wallet1, publicClient);
     const [wallet2, w2client] = privatekeySetup(W2_PRIV_KEY);
-    const ws2 = await openAuthSocket(w2client, wallet2);
+    const ws2 = await openAuthSocket(w2client, wallet2, publicClient);
 
     // Reset the order book so we have a blank slate.
     clearBook(ws1);
@@ -418,7 +437,7 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
         console.error("- Wallet 1 or 2 order file couldn't be parsed");
         process.exit(1);
     }
-    await Utils.sleep(5);
+    await Utils.sleep(1);
     // Confirm that these orders were logged in the book.
     getOpenOrders(ws1);
     await Utils.sleep(1);
@@ -427,4 +446,7 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
 
     // Gets crossed orders.
     getCrossedOrders(ws1, ordersW1[0]);
+
+
+
 })();

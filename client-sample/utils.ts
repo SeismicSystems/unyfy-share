@@ -1,6 +1,7 @@
 import * as crypto from "crypto";
-import { ethers } from "ethers";
 import { groth16 } from "snarkjs";
+import { recoverMessageAddress } from "viem";
+
 import {
     Groth16Proof,
     Groth16ProofCalldata,
@@ -22,7 +23,7 @@ import { sepolia } from "viem/chains";
 import { SEPOLIA_RPC } from "./constants";
 import { EnclaveSignature } from "./types";
 // import UnyfyDevABI from "./artifacts/UnyfyDev.json" assert { type: "json" };
-import { PLACE_WASM, PLACE_ZKEY } from "./constants";
+import { PLACE_WASM, PLACE_ZKEY, CANCEL_WASM, CANCEL_ZKEY, FILL_WASM, FILL_ZKEY } from "./constants";
 
 const BN128_SCALAR_MOD =
     BigInt(
@@ -43,26 +44,6 @@ export async function handleAsync<T>(
     }
 }
 
-/*
- * Spins up a fresh Ethereum wallet.
- */
-export async function createWallet(wallet_num: number): Promise<ethers.Wallet> {
-    if (wallet_num == 1) {
-        let privateKey =
-            "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
-        let wallet = new ethers.Wallet(privateKey);
-        let address = wallet.address;
-        console.log("- Sample wallet address:", address);
-        return wallet;
-    } else {
-        let privateKey =
-            "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a";
-        let wallet = new ethers.Wallet(privateKey);
-        let address = wallet.address;
-        console.log("- Sample wallet address:", address);
-        return wallet;
-    }
-}
 
 /*
  * Samples a uniformly random value in BN128's scalar field.
@@ -87,15 +68,13 @@ export function sleep(N: number) {
  * order. Ensures it verifies with the enclave's public key (address) so it will
  * be accepted by the contract.
  */
-export function sanityCheckSignature(
+export async function sanityCheckSignature(
     encSig: EnclaveSignature,
     encalvePubAddr: string,
 ) {
     const signature = `0x${encSig.signatureValue}`;
     const shieldedCommit = encSig.orderCommitment.shielded;
-    const hashedCommit = ethers.hashMessage(shieldedCommit);
-    const recoveredAddr = ethers.recoverAddress(hashedCommit, signature);
-
+    const recoveredAddr = await recoverMessageAddress({message: shieldedCommit, signature: `0x${encSig.signatureValue}`});
     if (recoveredAddr.toLowerCase() !== encalvePubAddr.toLowerCase()) {
         console.error("- CAUTION: Received invalid enclave signature");
     }
@@ -152,6 +131,11 @@ export async function exportCallDataGroth16(
  * Sets up a contract interface with Viem.
  */
 export function privatekeySetup(privKey: string | undefined): [any, any] {
+    console.log("Private key: ", privKey);
+    if (!privKey) {
+        console.error("Private key is undefined");
+        return [null, null];
+    }
     const account = privateKeyToAccount(`0x${privKey}`);
     const walletClient = createWalletClient({
         chain: sepolia,
@@ -164,9 +148,11 @@ export async function provePlace(
     orderhash: string,
     z: string,
 ): Promise<Groth16ProofCalldata> {
+    const orderhashBigInt = BigInt(`0x${orderhash}`);
+    const zBigInt = BigInt(z);
     const fillProofInputs = {
-        orderhash: orderhash.toString(),
-        z: z.toString(),
+        orderhash: orderhashBigInt,
+        z: zBigInt,
     };
 
     let [proverRes, proverErr]: [Groth16FullProveResult | null, any] =
@@ -193,3 +179,77 @@ export async function provePlace(
     console.log(exportRes);
     return exportRes;
 }
+
+export async function proveCancel(
+    orderhash: string,
+    z: string,
+): Promise<Groth16ProofCalldata> {
+    const orderhashBigInt = BigInt(`0x${orderhash}`);
+    const zBigInt = BigInt(z);
+    const cancelProofInputs = {
+        orderhash: orderhashBigInt,
+        z: zBigInt,
+    };
+
+    let [proverRes, proverErr]: [Groth16FullProveResult | null, any] =
+        await handleAsync(
+            groth16.fullProve(cancelProofInputs, CANCEL_WASM, CANCEL_ZKEY),
+        );
+
+    if (!proverRes || proverErr) {
+        console.error(
+            "ERROR: Could not generate draw ZKP for input signals:",
+            cancelProofInputs,
+        );
+        process.exit(1);
+    }
+
+    let exportRes, exportErr;
+    [exportRes, exportErr] = await handleAsync(
+        exportCallDataGroth16(proverRes.proof, proverRes.publicSignals),
+    );
+    if (!exportRes || exportErr) {
+        console.error("ERROR: Could not format proof:", proverRes);
+        process.exit(1);
+    }
+    console.log(exportRes);
+    return exportRes;
+}
+
+export async function proveFill(
+    orderhashes: string[],
+    z: string,
+): Promise<Groth16ProofCalldata> {
+    const orderhashBigInts = orderhashes.map(orderhash => BigInt(`0x${orderhash}`));
+    const zBigInt = BigInt(z);
+    const fillProofInputs = {
+        orderhash_own: orderhashBigInts[0],
+        orderhash_filled: orderhashBigInts.slice(1, 11),
+        z: zBigInt,
+    };
+
+    let [proverRes, proverErr]: [Groth16FullProveResult | null, any] =
+        await handleAsync(
+            groth16.fullProve(fillProofInputs, FILL_WASM, FILL_ZKEY),
+        );
+
+    if (!proverRes || proverErr) {
+        console.error(
+            "ERROR: Could not generate draw ZKP for input signals:",
+            fillProofInputs,
+        );
+        process.exit(1);
+    }
+
+    let exportRes, exportErr;
+    [exportRes, exportErr] = await handleAsync(
+        exportCallDataGroth16(proverRes.proof, proverRes.publicSignals),
+    );
+    if (!exportRes || exportErr) {
+        console.error("ERROR: Could not format proof:", proverRes);
+        process.exit(1);
+    }
+    console.log(exportRes);
+    return exportRes;
+}
+

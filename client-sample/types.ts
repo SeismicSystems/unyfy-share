@@ -1,5 +1,3 @@
-import { CreateWalletClientErrorType, createWalletClient, custom } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 export type RawOrder = {
     price: number;
     volume: number;
