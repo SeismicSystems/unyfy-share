@@ -37,7 +37,8 @@ import { parseGwei } from "viem";
  * Config for dev endpoint.
  */
 const SEISMIC_CONFIG = {
-    ip: "44.201.111.37",
+   ip: "35.153.255.21",
+   //ip: "127.0.0.1",
     port: "8000",
     encalvePubaddr: "0xa2c03BbE8Ce76d0c93D428A0f913F10b7acCfa9F",
 };
