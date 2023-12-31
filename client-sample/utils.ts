@@ -23,7 +23,14 @@ import { sepolia } from "viem/chains";
 import { SEPOLIA_RPC } from "./constants";
 import { EnclaveSignature } from "./types";
 // import UnyfyDevABI from "./artifacts/UnyfyDev.json" assert { type: "json" };
-import { PLACE_WASM, PLACE_ZKEY, CANCEL_WASM, CANCEL_ZKEY, FILL_WASM, FILL_ZKEY } from "./constants";
+import {
+    PLACE_WASM,
+    PLACE_ZKEY,
+    CANCEL_WASM,
+    CANCEL_ZKEY,
+    FILL_WASM,
+    FILL_ZKEY,
+} from "./constants";
 
 const BN128_SCALAR_MOD =
     BigInt(
@@ -43,7 +50,6 @@ export async function handleAsync<T>(
         return [null, error];
     }
 }
-
 
 /*
  * Samples a uniformly random value in BN128's scalar field.
@@ -74,7 +80,10 @@ export async function sanityCheckSignature(
 ) {
     const signature = `0x${encSig.signatureValue}`;
     const shieldedCommit = encSig.orderCommitment.shielded;
-    const recoveredAddr = await recoverMessageAddress({message: shieldedCommit, signature: `0x${encSig.signatureValue}`});
+    const recoveredAddr = await recoverMessageAddress({
+        message: shieldedCommit,
+        signature: `0x${encSig.signatureValue}`,
+    });
     if (recoveredAddr.toLowerCase() !== encalvePubAddr.toLowerCase()) {
         console.error("- CAUTION: Received invalid enclave signature");
     }
@@ -220,7 +229,9 @@ export async function proveFill(
     orderhashes: string[],
     z: string,
 ): Promise<Groth16ProofCalldata> {
-    const orderhashBigInts = orderhashes.map(orderhash => BigInt(`0x${orderhash}`));
+    const orderhashBigInts = orderhashes.map((orderhash) =>
+        BigInt(`0x${orderhash}`),
+    );
     const zBigInt = BigInt(z);
     const fillProofInputs = {
         orderhash_own: orderhashBigInts[0],
@@ -252,4 +263,3 @@ export async function proveFill(
     console.log(exportRes);
     return exportRes;
 }
-
