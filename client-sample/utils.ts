@@ -1,6 +1,11 @@
 import * as crypto from "crypto";
 import { groth16 } from "snarkjs";
 import { recoverMessageAddress } from "viem";
+import {
+    FillCircuitInputs,
+    CancelCircuitInputs,
+    PlaceCircuitInputs,
+} from "./types";
 
 import {
     Groth16Proof,
@@ -159,20 +164,20 @@ export async function provePlace(
 ): Promise<Groth16ProofCalldata> {
     const orderhashBigInt = BigInt(`0x${orderhash}`);
     const zBigInt = BigInt(z);
-    const fillProofInputs = {
+    const proofInputs = {
         orderhash: orderhashBigInt,
         z: zBigInt,
     };
 
     let [proverRes, proverErr]: [Groth16FullProveResult | null, any] =
         await handleAsync(
-            groth16.fullProve(fillProofInputs, PLACE_WASM, PLACE_ZKEY),
+            groth16.fullProve(proofInputs, PLACE_WASM, PLACE_ZKEY),
         );
 
     if (!proverRes || proverErr) {
         console.error(
             "ERROR: Could not generate draw ZKP for input signals:",
-            fillProofInputs,
+            proofInputs,
         );
         process.exit(1);
     }

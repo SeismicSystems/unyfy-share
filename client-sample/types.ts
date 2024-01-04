@@ -54,3 +54,18 @@ export type Groth16ProofCalldata = {
     c: [string, string];
     input: string[];
 };
+
+export type FillCircuitInputs = {
+    orderhash: BigInt;
+    z: BigInt;
+};
+
+export type CancelCircuitInputs = {
+    orderhash: BigInt;
+    z: BigInt;
+};
+
+export type PlaceCircuitInputs = {
+    orderhash: BigInt;
+    z: BigInt;
+};

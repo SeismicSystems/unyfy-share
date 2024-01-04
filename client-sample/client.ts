@@ -37,8 +37,8 @@ import { parseGwei } from "viem";
  * Config for dev endpoint.
  */
 const SEISMIC_CONFIG = {
-   ip: "35.153.255.21",
-   //ip: "127.0.0.1",
+    //  ip: "35.153.255.21",
+    ip: "127.0.0.1",
     port: "8000",
     encalvePubaddr: "0xa2c03BbE8Ce76d0c93D428A0f913F10b7acCfa9F",
 };
@@ -257,7 +257,7 @@ async function submitOrders(
         fs.readFileSync(ordersFile, "utf8"),
     );
     const orders: Order[] = rawOrders.map((raw) => constructOrder(raw));
-    orders.forEach((order) => {
+    for (const order of orders) {
         console.log("The sent order hash is", order.hash);
         ws.send(
             JSON.stringify({
@@ -274,7 +274,8 @@ async function submitOrders(
         processOrder(order, walletClient, account, publicClient).catch(
             console.error,
         );
-    });
+        Utils.sleep(5);
+    }
 
     return orders;
 }
@@ -306,7 +307,7 @@ async function processOrder(
             placeProof.c,
             placeProof.input,
         ],
-        gasPrice: parseGwei("80"),
+        gasPrice: parseGwei("140"),
         gas: BigInt(500000),
     });
     await walletClient.writeContract({ ...request, account: account });
@@ -505,7 +506,11 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
     await Utils.sleep(1);
     getOpenOrders(ws2);
     await Utils.sleep(1);
+    getOpenOrders(ws1);
+    await Utils.sleep(1);
+    getOpenOrders(ws2);
+    await Utils.sleep(1);
 
     //Gets crossed orders.
-    getCrossedOrders(ws1, ordersW1[0]);
+    // getCrossedOrders(ws1, ordersW1[0]);
 })();
