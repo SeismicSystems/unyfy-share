@@ -5,6 +5,5 @@
         "esModuleInterop": true,
         "moduleResolution": "node",
         "strict": true
-        // other options...
     }
 }
