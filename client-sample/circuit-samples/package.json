@@ -5,14 +5,10 @@
     "main": "index.js",
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1",
-        "dev:place:server": "scripts/dev-place.sh ../artifacts/powersOfTau28_hez_final_12.ptau",
-        "dev:cancel:server": "scripts/dev-cancel.sh ../artifacts/powersOfTau28_hez_final_12.ptau",
-        "dev:fill:server": "scripts/dev-fill.sh ../artifacts/powersOfTau28_hez_final_12.ptau",
-        "dev:main:server": "scripts/dev-main.sh",
-        "dev:place:local": "scripts/dev-place-anvil.sh ../artifacts/powersOfTau28_hez_final_12.ptau",
-        "dev:cancel:local": "scripts/dev-cancel-anvil.sh ../artifacts/powersOfTau28_hez_final_12.ptau",
-        "dev:fill:local": "scripts/dev-fill-anvil.sh ../artifacts/powersOfTau28_hez_final_12.ptau",
-        "dev:main:local": "scripts/dev-main-anvil.sh"
+        "dev:place": "scripts/dev-place.sh ../artifacts/powersOfTau28_hez_final_12.ptau",
+        "dev:cancel": "scripts/dev-cancel.sh ../artifacts/powersOfTau28_hez_final_12.ptau",
+        "dev:fill": "scripts/dev-fill.sh ../artifacts/powersOfTau28_hez_final_12.ptau",
+        "dev:main": "scripts/dev-main.sh"
     },
     "keywords": [],
     "author": "",

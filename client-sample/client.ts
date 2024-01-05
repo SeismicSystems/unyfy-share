@@ -17,7 +17,6 @@ import {
     WalletClient,
 } from "viem";
 import UnyfyDevABI from "./artifacts/UnyfyDev.json";
-import PlaceVerifierABI from "./artifacts/PlaceVerifier.json";
 import * as Utils from "./utils";
 import { RawOrder, Order } from "./types";
 import { W1_PRIV_KEY, W2_PRIV_KEY, MAIN_CONTRACT } from "./constants";
@@ -64,8 +63,7 @@ async function requestChallenge(
         [res, err] = await Utils.handleAsync(
             axios.post(`http://${SEISMIC_LOCAL_URL}/request_challenge`),
         );
-    } 
-    else {
+    } else {
         [res, err] = await Utils.handleAsync(
             axios.post(`http://${SEISMIC_SERVER_URL}/request_challenge`),
         );
@@ -382,6 +380,11 @@ async function submitOrders(
     const orders: Order[] = rawOrders.map((raw) => constructOrder(raw));
     for (const order of orders) {
         console.debug("The sent order hash is", order.hash);
+        const orderDictionary = JSON.parse(
+            fs.readFileSync(ordersDictionary, "utf8"),
+        );
+        orderDictionary[order.hash] = order;
+        fs.writeFileSync(ordersDictionary, JSON.stringify(orderDictionary));
         ws.send(
             JSON.stringify({
                 action: "sendorder",
@@ -394,11 +397,7 @@ async function submitOrders(
                 }
             },
         );
-        const orderDictionary = JSON.parse(
-            fs.readFileSync(ordersDictionary, "utf8"),
-        );
-        orderDictionary[order.hash] = order;
-        fs.writeFileSync(ordersDictionary, JSON.stringify(orderDictionary));
+        await Utils.sleep(5);
     }
 
     return orders;
@@ -428,7 +427,6 @@ async function placeOrder(
     const hexPlaceProofInput = BigInt(placeProof.input[0]).toString(16);
     console.debug("The hex place proof input is", hexPlaceProofInput);
 
-
     const { request } = await publicClient.simulateContract({
         address: `0x${MAIN_CONTRACT}`,
         abi: UnyfyDevABI.abi,
@@ -441,7 +439,7 @@ async function placeOrder(
             placeProof.c,
             placeProof.input,
         ],
-        gasPrice: parseGwei((Math.floor(Math.random() * 11) + 70).toString()),
+        gasPrice: parseGwei("100"),
         gas: BigInt(500000),
     });
     await walletClient.writeContract({ ...request, account: account });
@@ -462,7 +460,8 @@ async function sendCancelProof(
         abi: UnyfyDevABI.abi,
         functionName: "cancel",
         args: [cancelProof.a, cancelProof.b, cancelProof.c, cancelProof.input],
-        gasPrice: parseGwei("80"),
+        gasPrice: parseGwei("100"),
+        gas: BigInt(500000),
     });
     await walletClient.writeContract({ ...request, account: account });
     return orderhash;
@@ -491,7 +490,8 @@ async function sendFillProof(
         abi: UnyfyDevABI.abi,
         functionName: "fill",
         args: [fillProof.a, fillProof.b, fillProof.c, fillProof.input],
-        gasPrice: parseGwei((Math.floor(Math.random() * 11) + 70).toString()),
+        gasPrice: parseGwei("100"),
+        gas: BigInt(500000),
     });
     await walletClient.writeContract({ ...request, account: account });
     return orderhashes;
@@ -537,6 +537,10 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
 }
 
 (async () => {
+    // Clean up W1_CONSTRUCTED_ORDERS and W2_CONSTRUCTED_ORDERS
+    fs.writeFileSync(W1_CONSTRUCTED_ORDERS, JSON.stringify({}));
+    fs.writeFileSync(W2_CONSTRUCTED_ORDERS, JSON.stringify({}));
+
     let localorserver: string;
     const arg = process.argv[2];
     if (arg === "local") {
@@ -579,7 +583,7 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
 
     // Reset the order book so we have a blank slate.
     clearBook(ws1);
-    await Utils.sleep(1);
+    Utils.sleep(1);
 
     // Send the orders to the book, at which point they are still in the staging queue
     const ordersW1 = await submitOrders(
@@ -610,12 +614,17 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
     getOpenOrders(ws2);
 
     // Cancel the third order sent by client 2
-    const ordersData = fs.readFileSync(W2_CONSTRUCTED_ORDERS, 'utf8');
+    const ordersData = fs.readFileSync(W2_CONSTRUCTED_ORDERS, "utf8");
     const orders = JSON.parse(ordersData);
     const orderKey = Object.keys(orders)[2];
-   console.debug("The order key is {}", orderKey);
+    console.log("The order key is {}", orderKey);
     await sendCancelProof(publicClient, w2client, wallet2, orderKey);
 
+    await Utils.sleep(20);
+
+    getOpenOrders(ws2);
+
+    await Utils.sleep(5);
     // Gets crossed orders and immediately sends a fill() call to the verifier contract
     getCrossedOrders(ws1, ordersW1[0]);
 })();
