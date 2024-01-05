@@ -1,11 +1,6 @@
 import * as crypto from "crypto";
 import { groth16 } from "snarkjs";
 import { recoverMessageAddress } from "viem";
-import {
-    FillCircuitInputs,
-    CancelCircuitInputs,
-    PlaceCircuitInputs,
-} from "./types";
 
 import {
     Groth16Proof,
@@ -85,13 +80,16 @@ export async function sanityCheckSignature(
 ) {
     const signature = `0x${encSig.signatureValue}`;
     const shieldedCommit = encSig.orderCommitment.shielded;
+    console.log("- Received shielded commit:", shieldedCommit);
     const recoveredAddr = await recoverMessageAddress({
         message: shieldedCommit,
         signature: `0x${encSig.signatureValue}`,
     });
     if (recoveredAddr.toLowerCase() !== encalvePubAddr.toLowerCase()) {
         console.error("- CAUTION: Received invalid enclave signature");
+        return false;
     }
+    return true;
 }
 
 /*
@@ -145,7 +143,7 @@ export async function exportCallDataGroth16(
  * Sets up a contract interface with Viem.
  */
 export function privatekeySetup(privKey: string | undefined): [any, any] {
-    console.log("Private key: ", privKey);
+    // console.log("Private key: ", privKey);
     if (!privKey) {
         console.error("Private key is undefined");
         return [null, null];
@@ -158,6 +156,9 @@ export function privatekeySetup(privKey: string | undefined): [any, any] {
     return [account, walletClient];
 }
 
+/*
+ * Generates a proof for the place circuit.
+ */
 export async function provePlace(
     orderhash: string,
     z: string,
@@ -194,6 +195,9 @@ export async function provePlace(
     return exportRes;
 }
 
+/*
+ * Generates a proof for the cancel circuit.
+ */
 export async function proveCancel(
     orderhash: string,
     z: string,
@@ -230,6 +234,9 @@ export async function proveCancel(
     return exportRes;
 }
 
+/*
+ * Generates a proof for the fill circuit.
+ */
 export async function proveFill(
     orderhashes: string[],
     z: string,

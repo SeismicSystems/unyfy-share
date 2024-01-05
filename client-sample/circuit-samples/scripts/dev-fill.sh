@@ -37,7 +37,9 @@ sed -i '' 's/Groth16/Fill/g' ../contracts/src/FillVerifier.sol
 #4. Deploy the verifier to Sepolia using Foundry
 cd ../contracts
 
-forge create --rpc-url https://1rpc.io/sepolia --private-key\
+source ../.env
+
+forge create --rpc-url https://sepolia.infura.io/v3/${INFURA_API_KEY} --private-key\
  $W1_PRIV_KEY \
  src/FillVerifier.sol:FillVerifier --json > FillVerifierInfo.json
 
