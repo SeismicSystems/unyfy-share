@@ -12,7 +12,7 @@ Running the client when the backend is on the Seismic server:
 ```
 cd client-sample/
 pnpm install
-pnpm run dev:local
+pnpm run dev:server
 ```
 Running the client when the backend is run locally (you can find the backend code to run locally [here](https://github.com/elliptic-labs/unyfy-matching-engine)):
 
