@@ -1,1 +1,17 @@
-{}
+{
+    "84c8261eb39ad926771a8e54a35b5cfa90ae603282da4fdd80d1410d62b8a2a": {
+        "data": {
+            "transparent": {
+                "side": "0",
+                "token": "92bf259f558808106e4840e2642352b156a31bc41e5b4283df2937278f0a7a65",
+                "denomination": "0x1"
+            },
+            "shielded": {
+                "price": "101250000000",
+                "volume": "2000000000",
+                "accessKey": "288c6af02fe729774303aa6f44c2947077af19817a843231a762aeb4666ca367"
+            }
+        },
+        "hash": "84c8261eb39ad926771a8e54a35b5cfa90ae603282da4fdd80d1410d62b8a2a"
+    }
+}

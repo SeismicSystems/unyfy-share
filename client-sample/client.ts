@@ -536,6 +536,28 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
     );
 }
 
+/*
+ * Send an "upgradelisteningcontract" message with the new contract address
+ */
+function upgradeListeningContract(ws: WebSocket, newAddress: string) {
+    ws.send(
+        JSON.stringify({
+            action: "upgradelisteningcontract",
+            data: {
+                newAddress: newAddress,
+            },
+        }),
+        (error) => {
+            if (error) {
+                console.error(
+                    "Error sending upgrade listening contract message:",
+                    error,
+                );
+            }
+        },
+    );
+}
+
 (async () => {
     // Clean up W1_CONSTRUCTED_ORDERS and W2_CONSTRUCTED_ORDERS
     fs.writeFileSync(W1_CONSTRUCTED_ORDERS, JSON.stringify({}));
@@ -581,6 +603,9 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
         publicClient,
     );
 
+    upgradeListeningContract(ws1, "0x" + MAIN_CONTRACT);
+
+    Utils.sleep(5);
     // Reset the order book so we have a blank slate.
     clearBook(ws1);
     Utils.sleep(1);
