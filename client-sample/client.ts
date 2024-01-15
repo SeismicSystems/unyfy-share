@@ -537,8 +537,7 @@ function upgradeListeningContract(ws: WebSocket, newAddress: string) {
 }
 
 (async () => {
-    // Clean up W1_CONSTRUCTED_ORDERS and W2_CONSTRUCTED_ORDERS
-
+ 
     let localorserver: string;
     const arg = process.argv[2];
     if (arg === "local") {
