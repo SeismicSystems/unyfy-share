@@ -39,6 +39,8 @@ cd ../contracts
 
 source ../.env
 
+forge build
+
 forge create --rpc-url https://sepolia.infura.io/v3/${INFURA_API_KEY} --private-key\
  $W1_PRIV_KEY \
  src/PlaceVerifier.sol:PlaceVerifier --json > PlaceVerifierInfo.json

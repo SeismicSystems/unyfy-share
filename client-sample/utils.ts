@@ -1,25 +1,20 @@
 import * as crypto from "crypto";
 import { groth16 } from "snarkjs";
 import { recoverMessageAddress } from "viem";
+import {
+    PrivateKeyAccount,
+    WalletClient,
+    createWalletClient,
+    http,
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { sepolia } from "viem/chains";
 
 import {
     Groth16Proof,
     Groth16ProofCalldata,
     Groth16FullProveResult,
 } from "./types";
-import {
-    Address,
-    PrivateKeyAccount,
-    PublicClient,
-    WalletClient,
-    createPublicClient,
-    createWalletClient,
-    getContract,
-    http,
-    parseAbiItem,
-} from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { sepolia } from "viem/chains";
 import { SEPOLIA_RPC } from "./constants";
 import { EnclaveSignature } from "./types";
 // import UnyfyDevABI from "./artifacts/UnyfyDev.json" assert { type: "json" };
