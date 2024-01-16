@@ -1,5 +1,1 @@
-{
-    "deployer": "0x6D8974E19eEBa60FA27a85d7AD6722bCDD91A42a",
-    "deployedTo": "0x37E62b9C8669eEef130DC9aF3E7e9B2b32Db1414",
-    "transactionHash": "0x75d6a23a1e8edc5fc100ef5eaee8c5afd09ff2d70ec4f0aac627ec020aa2035f"
-}
+{"deployer":"0x6D8974E19eEBa60FA27a85d7AD6722bCDD91A42a","deployedTo":"0x4d2a77d6e69bC7CccC48841559f43e2113f59E02","transactionHash":"0x501d10bd27f4c582b3b5efcfa78b3e97c10e134fb87b416c13fc06c91e71e9ac"}

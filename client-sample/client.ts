@@ -3,7 +3,7 @@
  * through submitting, crossing, and filling orders. Uses two separate wallets
  * and sockets to emulate a trader and their counterparty.
  *
- * We deploy our contracts on Sepolia
+ * We deploy our contracts on Sepolia.
  *
  */
 
@@ -23,12 +23,12 @@ import { sepolia } from "viem/chains";
  * Internal imports
  */
 import UnyfyDevABI from "./artifacts/UnyfyDev.json";
-import * as Utils from "./utils";
-import { RawOrder, Order } from "./types";
-import { W1_PRIV_KEY, W2_PRIV_KEY, MAIN_CONTRACT } from "./constants";
-import { privatekeySetup } from "./utils";
-import { SEPOLIA_RPC } from "./constants";
-import * as Config from "./config";
+import * as Utils from "./lib/utils";
+import { RawOrder, Order } from "./lib/types";
+import { W1_PRIV_KEY, W2_PRIV_KEY, MAIN_CONTRACT } from "./lib/constants";
+import { privatekeySetup } from "./lib/utils";
+import { SEPOLIA_RPC } from "./lib/constants";
+import * as Config from "./lib/config";
 
 let ordersW1: { [orderhash: string]: Order } = {};
 let ordersW2: { [orderhash: string]: Order } = {};
@@ -66,7 +66,7 @@ async function requestChallenge(
 }
 
 /*
- * Send the signed challenge value back to the server.
+ * Send the signed challenge value back to the sequencer.
  */
 async function sendChallenge(
     localorserver: string,
@@ -132,7 +132,7 @@ async function placeOrder(
             placeProof.c,
             placeProof.input,
         ],
-        gasPrice: parseGwei("100"),
+        gasPrice: parseGwei(Config.gas_price),
         gas: BigInt(500000),
     });
     await walletClient.writeContract({ ...request, account: account });
@@ -187,6 +187,9 @@ async function handleEnclaveSignature(
     }
 }
 
+/*
+ * Handles crossed orders by sending fill proof to the contract for verification.
+ */
 async function handleGetCrossedOrders(
     orderhash_own: string,
     orders_crossed: any[],
@@ -255,7 +258,6 @@ async function handleServerMsg(
                 Config.SEISMIC_CONFIG.enclavePubaddr,
             );
             if (sanityCheck) {
-                console.debug("- Sanity check passed");
                 const enclavesig =
                     msgJson["enclaveSignature"]["signatureValue"];
                 await handleEnclaveSignature(
@@ -283,7 +285,7 @@ async function handleServerMsg(
             ).catch(console.error);
         }
     } else {
-        console.error("Received a non-JSON message:", msg);
+
     }
 }
 
@@ -403,7 +405,6 @@ async function submitOrders(
     );
     const orders: Order[] = rawOrders.map((raw) => constructOrder(raw));
     for (const order of orders) {
-        console.debug("The sent order hash is", order.hash);
         ordersDictionary[order.hash] = order;
         ws.send(
             JSON.stringify({
@@ -438,7 +439,7 @@ async function sendCancelProof(
         abi: UnyfyDevABI.abi,
         functionName: "cancel",
         args: [cancelProof.a, cancelProof.b, cancelProof.c, cancelProof.input],
-        gasPrice: parseGwei("100"),
+        gasPrice: parseGwei(Config.gas_price),
         gas: BigInt(500000),
     });
     await walletClient.writeContract({ ...request, account: account });
@@ -468,7 +469,7 @@ async function sendFillProof(
         abi: UnyfyDevABI.abi,
         functionName: "fill",
         args: [fillProof.a, fillProof.b, fillProof.c, fillProof.input],
-        gasPrice: parseGwei("100"),
+        gasPrice: parseGwei(Config.gas_price),
         gas: BigInt(500000),
     });
     await walletClient.writeContract({ ...request, account: account });
@@ -515,7 +516,7 @@ function getCrossedOrders(ws1: WebSocket, order: Order) {
 }
 
 /*
- * Send an "upgradelisteningcontract" message with the new contract address
+ * Send an "upgradelisteningcontract" message to the with the new contract address
  */
 function upgradeListeningContract(ws: WebSocket, newAddress: string) {
     ws.send(
@@ -616,11 +617,14 @@ function upgradeListeningContract(ws: WebSocket, newAddress: string) {
 
     await Utils.sleep(20);
 
+    // Confirm that the order was cancelled.
     getOpenOrders(ws2);
 
     await Utils.sleep(5);
+
     // Gets crossed orders and immediately sends a fill() call to the verifier contract
     let firstOrderKey = Object.keys(ordersW1)[0];
     let firstOrder = ordersW1[firstOrderKey];
     getCrossedOrders(ws1, firstOrder);
+
 })();

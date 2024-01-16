@@ -13,7 +13,10 @@ contract UnyfyDev {
     IFillVerifier fillVerifier;
 
     address enclave;
-
+    
+    /*
+     * Takes in the contract addresses of the verifier contracts and the enclave address and sets them.
+     */
     constructor(address _placeContractAddress, address _cancelContractAddress, address _fillContractAddress, address _enclave) {
         placeVerifier = IPlaceVerifier(_placeContractAddress);
         cancelVerifier = ICancelVerifier(_cancelContractAddress);
@@ -32,7 +35,10 @@ contract UnyfyDev {
 
     event constructed(address indexed placeVerifier, address indexed cancelVerifier, address indexed fillVerifier, address enclave);
 
-
+    /*
+     * Verifies the received signature with the
+     * enclave's public address.
+     */
     function verifyMessage(
         address _signer,
         string memory _message,
@@ -44,6 +50,9 @@ contract UnyfyDev {
         return recoverSigner(ethSignedMessageHash, _signature) == _signer;
     }
 
+    /*
+     * Helper function to split recover the signer from the signature.
+     */
     function recoverSigner(bytes32 _ethSignedMessageHash, bytes memory _signature)
         public
         pure
@@ -54,6 +63,9 @@ contract UnyfyDev {
         return ecrecover(_ethSignedMessageHash, v, r, s);
     }
 
+    /*
+     * Helper function to split the signature into r, s and v variables.
+     */
     function splitSignature(bytes memory sig)
         public
         pure
@@ -70,6 +82,11 @@ contract UnyfyDev {
         return (r, s, v);
     }
 
+    /*
+     * Helper function to convert uint to string.
+     * Taken from:
+     * https://stackoverflow.com/questions/47129173/how-to-convert-uint-to-string-in-solidity
+     */
     function uint2str(uint _i) internal pure returns (string memory _uintAsString) {
         if (_i == 0) {
             return "0";
@@ -92,6 +109,9 @@ contract UnyfyDev {
         return string(bstr);
     }
 
+    /*
+     * Verifies the place proof and emits the orderPlaced event if valid.
+     */
      function place(
         string memory _message,
         bytes memory _signature,
@@ -109,6 +129,9 @@ contract UnyfyDev {
         
     }
 
+    /*
+     * Verifies the cancel proof and emits the orderCancelled event if valid.
+     */
     function cancel(
         uint256[2] memory _pA,
         uint256[2][2] memory _pB,
@@ -123,6 +146,9 @@ contract UnyfyDev {
 
     }
 
+    /*
+     * Verifies the fill proof and emits the orderFilled event if valid.
+     */
     function fill(
         uint256[2] memory _pA,
         uint256[2][2] memory _pB,
@@ -146,6 +172,9 @@ contract UnyfyDev {
         
     }
 
+    /*
+     * Emits function to delete order from the bid/ask tree in the matching engine.
+     */
     function deleteOrderFromTree(uint256 _orderhash) public {
         if(_orderhash == 0){
             return;

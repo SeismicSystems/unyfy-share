@@ -5,9 +5,9 @@
     "main": "index.js",
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1",
-        "dev:place": "scripts/dev-place.sh ../artifacts/powersOfTau28_hez_final_12.ptau",
-        "dev:cancel": "scripts/dev-cancel.sh ../artifacts/powersOfTau28_hez_final_12.ptau",
-        "dev:fill": "scripts/dev-fill.sh ../artifacts/powersOfTau28_hez_final_12.ptau",
+        "dev:place": "scripts/dev-circuit-verifier.sh place powersOfTau28_hez_final_12.ptau",
+        "dev:cancel": "scripts/dev-circuit-verifier.sh cancel powersOfTau28_hez_final_12.ptau",
+        "dev:fill": "scripts/dev-circuit-verifier.sh fill powersOfTau28_hez_final_12.ptau",
         "dev:main": "scripts/dev-main.sh"
     },
     "keywords": [],

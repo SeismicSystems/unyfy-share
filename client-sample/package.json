@@ -5,7 +5,8 @@
     "main": "dev-client.ts",
     "scripts": {
         "dev:local": "ts-node client.ts local",
-        "dev:server": "ts-node client.ts server"
+        "dev:seismic": "ts-node client.ts server",
+        "dev:listen": "ts-node listen.ts"
     },
     "author": "",
     "license": "ISC",

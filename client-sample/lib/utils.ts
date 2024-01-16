@@ -1,23 +1,25 @@
 import * as crypto from "crypto";
 import { groth16 } from "snarkjs";
-import { recoverMessageAddress } from "viem";
-import {
-    PrivateKeyAccount,
-    WalletClient,
+import {recoverMessageAddress,
+    createPublicClient,
     createWalletClient,
+    getContract,
     http,
+    parseAbiItem,
+    Address,
+    WalletClient,
+    PrivateKeyAccount,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { sepolia } from "viem/chains";
+
 
 import {
     Groth16Proof,
     Groth16ProofCalldata,
     Groth16FullProveResult,
 } from "./types";
-import { SEPOLIA_RPC } from "./constants";
 import { EnclaveSignature } from "./types";
-// import UnyfyDevABI from "./artifacts/UnyfyDev.json" assert { type: "json" };
 import {
     PLACE_WASM,
     PLACE_ZKEY,
@@ -25,12 +27,22 @@ import {
     CANCEL_ZKEY,
     FILL_WASM,
     FILL_ZKEY,
+    SEPOLIA_RPC,
 } from "./constants";
+import UnyfyDevABI from "../artifacts/UnyfyDev.json";
+import deployment from "../artifacts/UnyfyDevInfo.json";
 
 const BN128_SCALAR_MOD =
     BigInt(
         21888242871839275222246405745257275088548364400416034343698204186575808495617,
     );
+
+export const EventABIs = {
+        OrderPlaced: parseAbiItem("event orderPlaced(address indexed pubaddr, uint256 indexed orderhash)"),
+        OrderCancelled: parseAbiItem("event orderCancelled(address indexed pubaddr, uint256 indexed orderhash)"),
+        OrderDeleted: parseAbiItem("event orderDelete(uint256 indexed orderhash)"),
+        OrderFilled: parseAbiItem("event orderFilled(address indexed pubaddr, uint256 indexed orderhash, uint256[] indexed filledorderhashes)")
+    };
 
 /*
  * Wrapper for error handling for promises.
@@ -75,7 +87,6 @@ export async function sanityCheckSignature(
 ) {
     const signature = `0x${encSig.signatureValue}`;
     const shieldedCommit = encSig.orderCommitment.shielded;
-    console.log("- Received shielded commit:", shieldedCommit);
     const recoveredAddr = await recoverMessageAddress({
         message: shieldedCommit,
         signature: `0x${encSig.signatureValue}`,
@@ -104,7 +115,6 @@ export async function signMsg(
         process.exit(1);
     }
     const signature = res;
-    console.log("- Signed message:", signature);
     return signature;
 }
 
@@ -138,7 +148,6 @@ export async function exportCallDataGroth16(
  * Sets up a contract interface with Viem.
  */
 export function privatekeySetup(privKey: string | undefined): [any, any] {
-    // console.log("Private key: ", privKey);
     if (!privKey) {
         console.error("Private key is undefined");
         return [null, null];
@@ -156,13 +165,13 @@ export function privatekeySetup(privKey: string | undefined): [any, any] {
  */
 export async function provePlace(
     orderhash: string,
-    z: string,
+    dummy: string,
 ): Promise<Groth16ProofCalldata> {
     const orderhashBigInt = BigInt(`0x${orderhash}`);
-    const zBigInt = BigInt(z);
+    const dummyBigInt = BigInt(dummy);
     const proofInputs = {
         orderhash: orderhashBigInt,
-        z: zBigInt,
+        dummy: dummyBigInt,
     };
 
     let [proverRes, proverErr]: [Groth16FullProveResult | null, any] =
@@ -172,7 +181,7 @@ export async function provePlace(
 
     if (!proverRes || proverErr) {
         console.error(
-            "ERROR: Could not generate draw ZKP for input signals:",
+            "ERROR: Could not generate place ZKP for input signals:",
             proofInputs,
         );
         process.exit(1);
@@ -186,7 +195,6 @@ export async function provePlace(
         console.error("ERROR: Could not format proof:", proverRes);
         process.exit(1);
     }
-    console.log(exportRes);
     return exportRes;
 }
 
@@ -195,13 +203,13 @@ export async function provePlace(
  */
 export async function proveCancel(
     orderhash: string,
-    z: string,
+    dummy: string,
 ): Promise<Groth16ProofCalldata> {
     const orderhashBigInt = BigInt(`0x${orderhash}`);
-    const zBigInt = BigInt(z);
+    const dummyBigInt = BigInt(dummy);
     const cancelProofInputs = {
         orderhash: orderhashBigInt,
-        z: zBigInt,
+        dummy: dummyBigInt,
     };
 
     let [proverRes, proverErr]: [Groth16FullProveResult | null, any] =
@@ -211,7 +219,7 @@ export async function proveCancel(
 
     if (!proverRes || proverErr) {
         console.error(
-            "ERROR: Could not generate draw ZKP for input signals:",
+            "ERROR: Could not generate cancel ZKP for input signals:",
             cancelProofInputs,
         );
         process.exit(1);
@@ -225,7 +233,6 @@ export async function proveCancel(
         console.error("ERROR: Could not format proof:", proverRes);
         process.exit(1);
     }
-    console.log(exportRes);
     return exportRes;
 }
 
@@ -234,16 +241,16 @@ export async function proveCancel(
  */
 export async function proveFill(
     orderhashes: string[],
-    z: string,
+    dummy: string,
 ): Promise<Groth16ProofCalldata> {
     const orderhashBigInts = orderhashes.map((orderhash) =>
         BigInt(`0x${orderhash}`),
     );
-    const zBigInt = BigInt(z);
+    const dummyBigInt = BigInt(dummy);
     const fillProofInputs = {
         orderhash_own: orderhashBigInts[0],
         orderhash_filled: orderhashBigInts.slice(1, 11),
-        z: zBigInt,
+        dummy: dummyBigInt,
     };
 
     let [proverRes, proverErr]: [Groth16FullProveResult | null, any] =
@@ -253,7 +260,7 @@ export async function proveFill(
 
     if (!proverRes || proverErr) {
         console.error(
-            "ERROR: Could not generate draw ZKP for input signals:",
+            "ERROR: Could not generate prove ZKP for input signals:",
             fillProofInputs,
         );
         process.exit(1);
@@ -267,6 +274,30 @@ export async function proveFill(
         console.error("ERROR: Could not format proof:", proverRes);
         process.exit(1);
     }
-    console.log(exportRes);
     return exportRes;
 }
+
+/*
+ * Sets up a contract interface with Viem.
+ */
+export function contractInterfaceSetup(privKey: string): [any, any] {
+    const account = privateKeyToAccount(`0x${privKey}`);
+    const walletClient = createWalletClient({
+        account,
+        chain: sepolia,
+        transport: http(SEPOLIA_RPC),
+    });
+    const publicClient = createPublicClient({
+        chain: sepolia,
+        transport: http(SEPOLIA_RPC),
+    });
+    const contract = getContract({
+        abi: UnyfyDevABI.abi,
+        address: deployment.deployedTo as Address,
+        walletClient,
+        publicClient,
+    });
+    return [publicClient, contract];
+}
+
+
