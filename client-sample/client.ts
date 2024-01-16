@@ -285,7 +285,6 @@ async function handleServerMsg(
             ).catch(console.error);
         }
     } else {
-
     }
 }
 
@@ -538,7 +537,6 @@ function upgradeListeningContract(ws: WebSocket, newAddress: string) {
 }
 
 (async () => {
- 
     let localorserver: string;
     const arg = process.argv[2];
     if (arg === "local") {
@@ -626,5 +624,4 @@ function upgradeListeningContract(ws: WebSocket, newAddress: string) {
     let firstOrderKey = Object.keys(ordersW1)[0];
     let firstOrder = ordersW1[firstOrderKey];
     getCrossedOrders(ws1, firstOrder);
-
 })();

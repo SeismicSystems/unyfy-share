@@ -12,7 +12,7 @@ Object.values(EventABIs).forEach((abi) => {
         strict: true,
         onLogs: (logs: [any]) => {
             logs.forEach((log) =>
-                console.log({ eventName: log["eventName"], args: log["args"] })
+                console.log({ eventName: log["eventName"], args: log["args"] }),
             );
         },
     });

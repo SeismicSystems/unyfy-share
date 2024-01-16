@@ -1,6 +1,7 @@
 import * as crypto from "crypto";
 import { groth16 } from "snarkjs";
-import {recoverMessageAddress,
+import {
+    recoverMessageAddress,
     createPublicClient,
     createWalletClient,
     getContract,
@@ -12,7 +13,6 @@ import {recoverMessageAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { sepolia } from "viem/chains";
-
 
 import {
     Groth16Proof,
@@ -38,11 +38,17 @@ const BN128_SCALAR_MOD =
     );
 
 export const EventABIs = {
-        OrderPlaced: parseAbiItem("event orderPlaced(address indexed pubaddr, uint256 indexed orderhash)"),
-        OrderCancelled: parseAbiItem("event orderCancelled(address indexed pubaddr, uint256 indexed orderhash)"),
-        OrderDeleted: parseAbiItem("event orderDelete(uint256 indexed orderhash)"),
-        OrderFilled: parseAbiItem("event orderFilled(address indexed pubaddr, uint256 indexed orderhash, uint256[] indexed filledorderhashes)")
-    };
+    OrderPlaced: parseAbiItem(
+        "event orderPlaced(address indexed pubaddr, uint256 indexed orderhash)",
+    ),
+    OrderCancelled: parseAbiItem(
+        "event orderCancelled(address indexed pubaddr, uint256 indexed orderhash)",
+    ),
+    OrderDeleted: parseAbiItem("event orderDelete(uint256 indexed orderhash)"),
+    OrderFilled: parseAbiItem(
+        "event orderFilled(address indexed pubaddr, uint256 indexed orderhash, uint256[] indexed filledorderhashes)",
+    ),
+};
 
 /*
  * Wrapper for error handling for promises.
@@ -299,5 +305,3 @@ export function contractInterfaceSetup(privKey: string): [any, any] {
     });
     return [publicClient, contract];
 }
-
-
