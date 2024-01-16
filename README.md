@@ -2,11 +2,11 @@
 
 ## Organization
 
-The demo has three main folders - `client-sample`, `circuits-sample` and `contracts-sample`.
+The demo has three main directories - `client-sample`, `circuits-sample` and `contracts-sample`.
 
 ### `circuits-sample`
 
-`circuits-sample` contains the circuits and other relevant files (`.wasm`s and `.zkey`s) for the circuit, which are located in the corresponding folders (`place/`, `cancel/` and `fill/`).
+`circuits-sample` contains the circuits and other relevant files (`.wasm`s and `.zkey`s) for the circuit, which are located in the corresponding directories (`place/`, `cancel/` and `fill/`).
 
 ### `contracts-sample`
 
@@ -20,7 +20,7 @@ The flow for running the demo end-to-end consists of compiling circuits and depl
 
 ## Compiling circuits and deploying contracts
 
-We provide dummy circuits in the `circuits-sample` folder. The scripts for the automated workflow of compiling the circuits ---> getting the relevant files for proof generation and verification (`.wasm` and `.zkey`) ---> deploying the Solidity verifier on-chain on the Sepolia testnet are provided in `circuits-sample/scripts`. They are abstracted away and one only has to run the following commands for end-to-end compiling of circuits and deployment of contracts:
+We provide dummy circuits in the `circuits-sample` directory. The scripts for the automated workflow of compiling the circuits ---> getting the relevant files for proof generation and verification (`.wasm` and `.zkey`) ---> deploying the Solidity verifier on-chain on the Sepolia testnet are provided in `circuits-sample/scripts`. They are abstracted away and one only has to run the following commands for end-to-end compiling of circuits and deployment of contracts:
 
 Installing dependencies:
 
