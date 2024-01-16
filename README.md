@@ -58,7 +58,7 @@ You need to first set the environment and other variables in order to run the cl
 There are three variables, `W1_PRIV_KEY`, `W2_PRIV_KEY` and `INFURA_API_KEY` that need to be set in the `.env` file of the `client-sample` directory. `W1_PRIV_KEY` and `W2_PRIV_KEY` are private keys for the wallets that will be used for interacting with the backend and on-chain, while `INFURA_API_KEY` will be used in the RPC URL to interact with the Sepolia network.
 
 ### Other Variables
-In the `client-sample/artifacts` directory, you can find `wallet1_orders.json` and `wallet2_orders.json`, where you can enter the orders for wallet 1 and 2 respectively where an item in the file is a tuple of price, volume and side (bid (0)) or ask(0)). You can set a custom `gasPrice` for all transactions by changing the `price` field in `gas_price.json`.
+In the `client-sample/artifacts` directory, you can find `wallet1_orders.json` and `wallet2_orders.json`, where you can enter the orders for wallet 1 and 2 respectively where an item in the file is a tuple of price, volume and side (`bid` (0) or `ask` (1)). You can set a custom `gasPrice` for all transactions by changing the `price` field in `gas_price.json`.
 
 
 We have two modes in running the client depending on whether the backend runs on Seismic's sequencer or locally. We outline them below
