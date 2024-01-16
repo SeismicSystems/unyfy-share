@@ -4,7 +4,7 @@
   This script performs the following operations:
   1. Compiles the circuit
   2. Computes a .zkey
-  3. Exports a solidity verifier to ../../contracts/Verifier.sol
+  3. Exports a solidity verifier to ../contracts-sample/{Circuit_Name}Verifier.sol
 '
 source ../client-sample/.env
 
@@ -17,7 +17,7 @@ cd ${CIRCUIT_NAME}
 # 1. Compile the circuit
 circom ${CIRCUIT_NAME}.circom --r1cs --wasm
 
-# 2. Move the .wasm to the client-sample/circuit-samples/ directory
+# 2. Move the .wasm to the current directory
 mv ${CIRCUIT_NAME}_js/${CIRCUIT_NAME}.wasm ${CIRCUIT_NAME}.wasm
 
 # 3. Remove unnecessary folder
@@ -32,7 +32,7 @@ snarkjs groth16 setup ${CIRCUIT_NAME}.r1cs \
 rm ${CIRCUIT_NAME}.r1cs
 
 
-# 3. Export the solidity verifier to ../../contracts/${CAP_CIRCUIT_NAME}Verifier.sol
+# 3. Export the solidity verifier to ../contracts-sample/${CAP_CIRCUIT_NAME}Verifier.sol
 snarkjs zkey export solidityverifier ${CIRCUIT_NAME}.zkey \
   ../../contracts-sample/src/${CAP_CIRCUIT_NAME}Verifier.sol 
 
