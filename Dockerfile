@@ -27,4 +27,4 @@ RUN sh docker_setup.sh
 EXPOSE 80
 
 # Run the application.
-CMD ["pnpm", "-C", "client-sample", "run", "dev:seismic"]
+CMD ["pnpm", "-C", "client-sample", "run", "dev:listen"]

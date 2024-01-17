@@ -18,7 +18,49 @@ Lastly, the client is located in `client-sample`, and contains the required arti
 
 The flow for running the demo end-to-end consists of compiling circuits and deploying contracts, setting the required environment and other variables, and finally running the client.
 
-## Compiling circuits and deploying contracts
+## Running the demo 
+The demo can be run in either the Docker mode (easier) or the Manual mode. For both modes, you need to set the environment and other variables, which are described below.
+
+### Environment Variables
+
+There are three variables, `W1_PRIV_KEY`, `W2_PRIV_KEY` and `INFURA_API_KEY` that need to be set in the `.env` file of the `client-sample` directory. `W1_PRIV_KEY` and `W2_PRIV_KEY` are private keys for the wallets that will be used for interacting with the backend and on-chain, while `INFURA_API_KEY` will be used in the RPC URL to interact with the Sepolia network.
+
+### Other Variables
+
+In the `client-sample/artifacts` directory, you can find `wallet1_orders.json` and `wallet2_orders.json`, where you can enter the orders for wallet 1 and 2 respectively where an item in the file is a tuple of price, volume and side (`bid` (0) or `ask` (1)). You can set a custom `gasPrice` for all transactions by changing the `price` field in `gas_price.json`.
+
+## Running in Docker mode
+To run the demo in Docker mode, first make sure that Docker Compose and/or Docker Desktop is running on your system. Then, run
+
+```
+docker-compose up
+```
+After this, run 
+```
+docker-compose exec -it server bash
+```
+
+and now, navigate to the `client-sample` directory:
+
+```
+cd client-sample
+```
+Here, run:
+
+```
+pnpm run dev:seismic
+```
+if you're interacting with the matching engine on Seismic's sequencer
+
+or 
+```
+pnpm run dev:local
+```
+if you're running the matching engine locally. 
+
+## Running the client in manual mode
+
+### Compiling circuits and deploying contracts
 
 We provide dummy circuits in the `circuits-sample` directory. The scripts for the automated workflow of compiling the circuits ---> getting the relevant files for proof generation and verification (`.wasm` and `.zkey`) ---> deploying the Solidity verifier on-chain on the Sepolia testnet are provided in `circuits-sample/scripts`. They are abstracted away and one only has to run the following commands for end-to-end compiling of circuits and deployment of contracts:
 
@@ -55,21 +97,11 @@ pnpm run dev:main
 
 This deploys the `UnyfyDev.sol` contract to Sepolia. All the above contracts are stored in `contracts-sample/src`. Deployment information about all four contracts can be found in `client-sample/artifacts` (with the file names `PlaceVerifierInfo.json` `CancelVerifierInfo.json`, `FillVerifierInfo.json` and `UnyfyDevInfo.json`).
 
-## Running the Client
+### Running the Client
 
 We now run the main client to interact with the matching engine. Documentation included in-line at `client-sample/client.ts`.
 
 We wrote this client so it may have minimal dependencies / setup steps. Running the below commands is all you need to execute the full order flow from constructing -> submitting -> crossing -> filling.
-
-You need to first set the environment and other variables in order to run the client.
-
-### Environment Variables
-
-There are three variables, `W1_PRIV_KEY`, `W2_PRIV_KEY` and `INFURA_API_KEY` that need to be set in the `.env` file of the `client-sample` directory. `W1_PRIV_KEY` and `W2_PRIV_KEY` are private keys for the wallets that will be used for interacting with the backend and on-chain, while `INFURA_API_KEY` will be used in the RPC URL to interact with the Sepolia network.
-
-### Other Variables
-
-In the `client-sample/artifacts` directory, you can find `wallet1_orders.json` and `wallet2_orders.json`, where you can enter the orders for wallet 1 and 2 respectively where an item in the file is a tuple of price, volume and side (`bid` (0) or `ask` (1)). You can set a custom `gasPrice` for all transactions by changing the `price` field in `gas_price.json`.
 
 We have two modes in running the client depending on whether the backend runs on Seismic's sequencer or locally. We outline them below
 
@@ -89,7 +121,7 @@ pnpm install
 pnpm run dev:local
 ```
 
-## Listening to the contract
+### Listening to the contract
 
 You can observe what's happening on-chain, more specifically, the events that are being emitted by the deployed `UnyfyDev.sol` contract, by running
 
