@@ -19,7 +19,7 @@ Lastly, the client is located in `client-sample`, and contains the required arti
 The flow for running the demo end-to-end consists of compiling circuits and deploying contracts, setting the required environment and other variables, and finally running the client.
 
 ## Running the demo 
-The demo can be run in either the Docker mode (easier) or the Manual mode. For both modes, you need to set the environment and other variables, which are described below.
+The demo can be run in either the Docker mode (easier) or manual mode. For both modes, you need to set the environment and other variables, which are described below.
 
 ### Environment Variables
 
@@ -29,7 +29,7 @@ There are three variables, `W1_PRIV_KEY`, `W2_PRIV_KEY` and `INFURA_API_KEY` tha
 
 In the `client-sample/artifacts` directory, you can find `wallet1_orders.json` and `wallet2_orders.json`, where you can enter the orders for wallet 1 and 2 respectively where an item in the file is a tuple of price, volume and side (`bid` (0) or `ask` (1)). You can set a custom `gasPrice` for all transactions by changing the `price` field in `gas_price.json`.
 
-## Running in Docker mode
+## Running in demo in Docker mode
 To run the demo in Docker mode, first make sure that Docker Compose and/or Docker Desktop is running on your system. Then, run
 
 ```
@@ -58,7 +58,7 @@ pnpm run dev:local
 ```
 if you're running the matching engine locally. 
 
-## Running the client in manual mode
+## Running the demo in manual mode
 
 ### Compiling circuits and deploying contracts
 
