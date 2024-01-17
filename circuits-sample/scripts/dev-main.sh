@@ -1,5 +1,5 @@
 # Deploy the main verifier to Sepolia using Foundry
-source ../client-sample/.env
+. ../client-sample/.env
 
 cd ../contracts-sample
 
