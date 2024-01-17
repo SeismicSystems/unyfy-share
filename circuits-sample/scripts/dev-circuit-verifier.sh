@@ -15,7 +15,7 @@ CAP_CIRCUIT_NAME=$(echo $CIRCUIT_NAME | awk '{print toupper(substr($0,1,1))subst
 cd ${CIRCUIT_NAME}
 
 # 1. Compile the circuit
-circom ${CIRCUIT_NAME}.circom --r1cs --wasm
+circom2 ${CIRCUIT_NAME}.circom --r1cs --wasm
 
 # 2. Move the .wasm to the current directory
 mv ${CIRCUIT_NAME}_js/${CIRCUIT_NAME}.wasm ${CIRCUIT_NAME}.wasm
@@ -36,7 +36,13 @@ rm ${CIRCUIT_NAME}.r1cs
 snarkjs zkey export solidityverifier ${CIRCUIT_NAME}.zkey \
   ../../contracts-sample/src/${CAP_CIRCUIT_NAME}Verifier.sol 
 
-sed -i '' "s/Groth16/${CAP_CIRCUIT_NAME}/g" ../../contracts-sample/src/${CAP_CIRCUIT_NAME}Verifier.sol
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  # Mac OSX
+  sed -i '' "s/Groth16/${CAP_CIRCUIT_NAME}/g" ../../contracts-sample/src/${CAP_CIRCUIT_NAME}Verifier.sol
+else
+  # GNU sed, Linux
+  sed -i "s/Groth16/${CAP_CIRCUIT_NAME}/g" ../../contracts-sample/src/${CAP_CIRCUIT_NAME}Verifier.sol
+fi
 
 
 #4. Deploy the verifier to Sepolia using Foundry
